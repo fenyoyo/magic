@@ -3,8 +3,16 @@
 #include "board.h"
 #include "mqtt_manager.h"
 #include <string>
+#include "mpu6050_sensor.h"
 
 #define TAG "Application"
+
+#ifdef CONFIG_EXAMPLE_I2C_ADDRESS_LOW
+#define ADDR MPU6050_I2C_ADDRESS_LOW
+#else
+#define ADDR MPU6050_I2C_ADDRESS_HIGH
+#endif
+
 Application::Application()
 {
     ESP_LOGI(TAG, "Application init");
@@ -101,4 +109,14 @@ void Application::Start()
     mqtt.setErrorCallback([this](int error_type, void *error_data)
                           { this->onMQTTError(error_type, error_data); });
     mqtt.init();
+
+    // 第三步启动MPU6050
+    // auto &mpu6050 = MPU6050Sensor::getInstance();
+    // if (!mpu6050.begin())
+    // {
+    //     ESP_LOGE(TAG, "Failed to initialize MPU6050");
+    //     return;
+    // }
+    // mpu6050.calibrateGyro(2000);
+    // mpu6050.startSampling(100);
 }
