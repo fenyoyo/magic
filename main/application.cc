@@ -4,6 +4,7 @@
 #include "mqtt_manager.h"
 #include <string>
 #include "mpu6050_sensor.h"
+#include "oled_display.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -74,6 +75,21 @@ void Application::onMQTTConnection(bool connected)
     }
 }
 
+#define OLED_UPDATE_MS 100
+
+/** 实时将陀螺仪/加速度数据显示到 OLED */
+static void oled_imu_task(void *arg)
+{
+    auto &mpu = MPU6050Sensor::getInstance();
+    MPU6050Data data;
+    for (;;)
+    {
+        if (mpu.getData(data))
+            oled_show_imu(data.gyro_x, data.gyro_y, data.gyro_z,
+                          data.accel_x, data.accel_y, data.accel_z);
+        vTaskDelay(pdMS_TO_TICKS(OLED_UPDATE_MS));
+    }
+}
 
 /** 按钮按下时每 5ms 读陀螺仪并通过 MQTT 发送，松开停止；LED 随按钮亮灭 */
 static void button_gyro_task(void *arg)
@@ -175,18 +191,12 @@ void Application::Start()
                           { this->onMQTTError(error_type, error_data); });
     mqtt.init();
 
-    // 第三步启动MPU6050，并读取一秒内的陀螺仪数据
+    // 第三步启动 MPU6050、OLED，并启动按钮任务与 OLED 实时显示
     auto &mpu = MPU6050Sensor::getInstance();
     if (mpu.init())
     {
-        // MPU6050Data data;
-        // if (mpu.getData(data))
-        // {
-        //     ESP_LOGI(TAG, "MPU6050 Accel: X=%.3f Y=%.3f Z=%.3f g", data.accel_x, data.accel_y, data.accel_z);
-        //     ESP_LOGI(TAG, "MPU6050 Gyro:  X=%.2f Y=%.2f Z=%.2f °/s", data.gyro_x, data.gyro_y, data.gyro_z);
-        //     ESP_LOGI(TAG, "MPU6050 Temp:  %.2f °C", data.temperature);
-        // }
-
+        if (oled_init())
+            xTaskCreate(oled_imu_task, "oled_imu", 2048, nullptr, 4, nullptr);
         xTaskCreate(button_gyro_task, "btn_gyro", 3072, nullptr, 5, nullptr);
     }
     else

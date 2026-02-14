@@ -14,5 +14,8 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=e:\\Projects\\gamic\\build"
-  ]
+  ],
+  "files.associations": {
+    "oled_display.h": "c"
+  }
 }
