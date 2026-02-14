@@ -70,7 +70,7 @@ menu "MQTT Configuration"
 
     config MQTT_BROKER_URI
         string "MQTT Broker URI"
-        default "mqtt:/mqtt.uyuo.me"
+        default "mqtt://mqtt.uyuo.me:1883"
         help
             MQTT broker URI. Can be mqtt://, mqtts://, ws://, or wss://.
             Example: mqtt://broker.emqx.io:1883

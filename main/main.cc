@@ -10,6 +10,8 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "application.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 extern "C" void app_main(void)
 {
@@ -21,6 +23,15 @@ extern "C" void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    ESP_LOGI("MAIN", "Starting application...");
+
     // 启动程序
     Application::getInstance().Start();
+
+    // 保持运行
+    while (1)
+    {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
 }

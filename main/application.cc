@@ -19,7 +19,7 @@
 /** 陀螺仪 MQTT 发布主题 */
 /** publish 失败（队列满）时等待时间，让已排队消息发完 */
 #define MQTT_BACKPRESSURE_MS 30
-
+#define OLED_UPDATE_MS 100
 
 Application::Application()
 {
@@ -75,10 +75,10 @@ void Application::onMQTTConnection(bool connected)
     }
 }
 
-#define OLED_UPDATE_MS 100
+
 
 /** 实时将陀螺仪/加速度数据显示到 OLED */
-static void oled_imu_task(void *arg)
+void Application::oled_imu_task(void *arg)
 {
     auto &mpu = MPU6050Sensor::getInstance();
     MPU6050Data data;
@@ -92,7 +92,7 @@ static void oled_imu_task(void *arg)
 }
 
 /** 按钮按下时每 5ms 读陀螺仪并通过 MQTT 发送，松开停止；LED 随按钮亮灭 */
-static void button_gyro_task(void *arg)
+void Application::button_gyro_task(void *arg)
 {
     gpio_config_t io = {};
     io.pin_bit_mask = (1ULL << BUTTON_GPIO);
@@ -122,6 +122,7 @@ static void button_gyro_task(void *arg)
             seq = 0;
             gpio_set_level(LED_GPIO, 1);
             ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
+            mqtt.publish("/device/start", "", 0, 0, 0);
             while (gpio_get_level(BUTTON_GPIO) == 0)
             {
                 MPU6050Data data;
@@ -141,6 +142,7 @@ static void button_gyro_task(void *arg)
                 }
                 vTaskDelay(pdMS_TO_TICKS(GYRO_STREAM_MS));
             }
+            mqtt.publish("/device/stop", "", 0, 0, 0);
             gpio_set_level(LED_GPIO, 0);
             ESP_LOGI(TAG, "Button released, gyro MQTT stream end (total %u)", (unsigned)seq);
         }
@@ -195,9 +197,10 @@ void Application::Start()
     auto &mpu = MPU6050Sensor::getInstance();
     if (mpu.init())
     {
-        if (oled_init())
-            xTaskCreate(oled_imu_task, "oled_imu", 2048, nullptr, 4, nullptr);
-        xTaskCreate(button_gyro_task, "btn_gyro", 3072, nullptr, 5, nullptr);
+        if (oled_init()){
+            xTaskCreate(oled_imu_task, "oled_imu", 2048, this, 4, &m_oled_task_handle);
+        }
+        xTaskCreate(button_gyro_task, "btn_gyro", 3072, this, 5, &m_button_gyro_task_handle);
     }
     else
     {
