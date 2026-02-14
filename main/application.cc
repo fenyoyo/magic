@@ -11,7 +11,14 @@
 #define TAG "Application"
 /** 按钮 GPIO：按下为低电平（接 GND），松开为高电平（内部上拉） */
 #define BUTTON_GPIO       GPIO_NUM_4
+/** LED GPIO：按下按钮时亮，松开时灭 */
+#define LED_GPIO          GPIO_NUM_5
 #define GYRO_STREAM_MS   5
+
+/** 陀螺仪 MQTT 发布主题 */
+/** publish 失败（队列满）时等待时间，让已排队消息发完 */
+#define MQTT_BACKPRESSURE_MS 30
+
 
 Application::Application()
 {
@@ -48,7 +55,7 @@ void Application::onMQTTConnection(bool connected)
     {
         ESP_LOGI(TAG, "MQTT Connected!");
 
-        auto &mqtt = MQTTManager::getInstance();
+        // auto &mqtt = MQTTManager::getInstance();
 
         // 连接成功后发布设备状态
         // std::string status = m_device_status ? "ON" : "OFF";
@@ -67,11 +74,8 @@ void Application::onMQTTConnection(bool connected)
     }
 }
 
-/** 陀螺仪 MQTT 发布主题 */
-/** publish 失败（队列满）时等待时间，让已排队消息发完 */
-#define MQTT_BACKPRESSURE_MS 30
 
-/** 按钮按下时每 5ms 读陀螺仪并通过 MQTT 发送，松开停止 */
+/** 按钮按下时每 5ms 读陀螺仪并通过 MQTT 发送，松开停止；LED 随按钮亮灭 */
 static void button_gyro_task(void *arg)
 {
     gpio_config_t io = {};
@@ -81,6 +85,14 @@ static void button_gyro_task(void *arg)
     io.pull_down_en = GPIO_PULLDOWN_DISABLE;
     io.intr_type = GPIO_INTR_DISABLE;
     gpio_config(&io);
+
+    io.pin_bit_mask = (1ULL << LED_GPIO);
+    io.mode = GPIO_MODE_OUTPUT;
+    io.pull_up_en = GPIO_PULLUP_DISABLE;
+    io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&io);
+    gpio_set_level(LED_GPIO, 0);
 
     auto &mpu = MPU6050Sensor::getInstance();
     auto &mqtt = MQTTManager::getInstance();
@@ -92,6 +104,7 @@ static void button_gyro_task(void *arg)
         if (gpio_get_level(BUTTON_GPIO) == 0)
         {
             seq = 0;
+            gpio_set_level(LED_GPIO, 1);
             ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
             while (gpio_get_level(BUTTON_GPIO) == 0)
             {
@@ -112,6 +125,7 @@ static void button_gyro_task(void *arg)
                 }
                 vTaskDelay(pdMS_TO_TICKS(GYRO_STREAM_MS));
             }
+            gpio_set_level(LED_GPIO, 0);
             ESP_LOGI(TAG, "Button released, gyro MQTT stream end (total %u)", (unsigned)seq);
         }
         vTaskDelay(pdMS_TO_TICKS(20));
