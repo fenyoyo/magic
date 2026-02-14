@@ -70,7 +70,7 @@ menu "MQTT Configuration"
 
     config MQTT_BROKER_URI
         string "MQTT Broker URI"
-        default "mqtt://mqtt.eclipseprojects.io"
+        default "mqtt:/mqtt.uyuo.me"
         help
             MQTT broker URI. Can be mqtt://, mqtts://, ws://, or wss://.
             Example: mqtt://broker.emqx.io:1883
@@ -99,9 +99,15 @@ menu "MQTT Configuration"
         help
             MQTT topic to publish messages to.
 
+    config MQTT_SUBSCRIBE_TOPIC_GYRO
+        string "MQTT Subscribe Topic Gyro"
+        default "/device/gyro"
+        help
+            MQTT topic to subscribe to.
+
 endmenu
 
-menu "MPU6050 Example Configuration"
+menu "MPU6050 Configuration"
 
     choice EXAMPLE_I2C_ADDRESS
         prompt "Select I2C address"
@@ -125,7 +131,7 @@ menu "MPU6050 Example Configuration"
         default 4 if IDF_TARGET_ESP32C2 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32C5 || IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32C61
         default 4 if IDF_TARGET_ESP32H2
         default 4 if IDF_TARGET_ESP32P4
-        default 19 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
+        default 9 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
         help
             GPIO number for I2C Master clock line.
 
@@ -135,7 +141,7 @@ menu "MPU6050 Example Configuration"
         default 5 if IDF_TARGET_ESP32C2 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32C5 || IDF_TARGET_ESP32C6 || IDF_TARGET_ESP32C61
         default 5 if IDF_TARGET_ESP32H2
         default 5 if IDF_TARGET_ESP32P4
-        default 18 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
+        default 8 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
         help
             GPIO number for I2C Master data line.
      

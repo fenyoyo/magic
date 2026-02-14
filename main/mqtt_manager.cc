@@ -299,13 +299,7 @@ int MQTTManager::publish(const std::string &topic,
                                          retain);
 
     if (msg_id < 0)
-    {
-        ESP_LOGE(TAG, "Failed to publish message to topic: %s", topic.c_str());
-    }
-    else
-    {
-        ESP_LOGI(TAG, "Published to topic: %s, msg_id=%d", topic.c_str(), msg_id);
-    }
+        ESP_LOGE(TAG, "Failed to publish message to topic: %s (queue full?)", topic.c_str());
 
     return msg_id;
 }

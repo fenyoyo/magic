@@ -51,14 +51,14 @@ void Application::onMQTTConnection(bool connected)
         auto &mqtt = MQTTManager::getInstance();
 
         // 连接成功后发布设备状态
-        std::string status = m_device_status ? "ON" : "OFF";
-        mqtt.publish("device/status", status, 1, 1);
+        // std::string status = m_device_status ? "ON" : "OFF";
+        // mqtt.publish("device/status", status, 1, 1);
         // int msg_id = esp_mqtt_client_publish(m_client,
         //                                      m_publish_topic.c_str(),
         //                                      "ESP32 Connected",
         //                                      0, 1, 0);
         // 订阅控制主题
-        mqtt.subscribe("device/control", 0);
+        // mqtt.subscribe("device/control", 0);
     }
     else
     {
@@ -68,7 +68,8 @@ void Application::onMQTTConnection(bool connected)
 }
 
 /** 陀螺仪 MQTT 发布主题 */
-#define MQTT_TOPIC_GYRO "device/gyro"
+/** publish 失败（队列满）时等待时间，让已排队消息发完 */
+#define MQTT_BACKPRESSURE_MS 30
 
 /** 按钮按下时每 5ms 读陀螺仪并通过 MQTT 发送，松开停止 */
 static void button_gyro_task(void *arg)
@@ -94,15 +95,20 @@ static void button_gyro_task(void *arg)
             ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
             while (gpio_get_level(BUTTON_GPIO) == 0)
             {
-                float gx, gy, gz;
-                if (mpu.getGyro(gx, gy, gz))
+                MPU6050Data data;
+                if (mpu.getData(data))
                 {
                     int len = snprintf(payload, sizeof(payload),
-                                       "{\"seq\":%u,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f}",
-                                       (unsigned)seq, gx, gy, gz);
+                                       "{\"seq\":%u,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f}",
+                                       (unsigned)seq, data.gyro_x, data.gyro_y, data.gyro_z, data.accel_x, data.accel_y, data.accel_z);
                     if (len > 0 && (size_t)len < sizeof(payload) && mqtt.isConnected())
-                        mqtt.publish(MQTT_TOPIC_GYRO, payload, (size_t)len, 0, 0);
-                    seq++;
+                    {
+                        int msg_id = mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
+                        if (msg_id >= 0)
+                            seq++;
+                        else
+                            vTaskDelay(pdMS_TO_TICKS(MQTT_BACKPRESSURE_MS));
+                    }
                 }
                 vTaskDelay(pdMS_TO_TICKS(GYRO_STREAM_MS));
             }
