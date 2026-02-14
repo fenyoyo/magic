@@ -7,12 +7,6 @@
 
 #define TAG "Application"
 
-#ifdef CONFIG_EXAMPLE_I2C_ADDRESS_LOW
-#define ADDR MPU6050_I2C_ADDRESS_LOW
-#else
-#define ADDR MPU6050_I2C_ADDRESS_HIGH
-#endif
-
 Application::Application()
 {
     ESP_LOGI(TAG, "Application init");
@@ -110,13 +104,45 @@ void Application::Start()
                           { this->onMQTTError(error_type, error_data); });
     mqtt.init();
 
-    // 第三步启动MPU6050
-    // auto &mpu6050 = MPU6050Sensor::getInstance();
-    // if (!mpu6050.begin())
-    // {
-    //     ESP_LOGE(TAG, "Failed to initialize MPU6050");
-    //     return;
-    // }
-    // mpu6050.calibrateGyro(2000);
-    // mpu6050.startSampling(100);
+    // 第三步启动MPU6050，并读取一秒内的陀螺仪数据
+    auto &mpu = MPU6050Sensor::getInstance();
+    if (mpu.init())
+    {
+        MPU6050Data data;
+        if (mpu.getData(data))
+        {
+            ESP_LOGI(TAG, "MPU6050 Accel: X=%.3f Y=%.3f Z=%.3f g", data.accel_x, data.accel_y, data.accel_z);
+            ESP_LOGI(TAG, "MPU6050 Gyro:  X=%.2f Y=%.2f Z=%.2f °/s", data.gyro_x, data.gyro_y, data.gyro_z);
+            ESP_LOGI(TAG, "MPU6050 Temp:  %.2f °C", data.temperature);
+        }
+
+        MPU6050GyroSnapshot gyro1s;
+        if (mpu.readGyroForOneSecond(gyro1s))
+        {
+            ESP_LOGI(TAG, "MPU6050 1s gyro: %d samples", gyro1s.count);
+            if (gyro1s.count > 0)
+            {
+                float sum_x = 0, sum_y = 0, sum_z = 0;
+                for (int i = 0; i < gyro1s.count; i++)
+                {
+                    sum_x += gyro1s.gyro_x[i];
+                    sum_y += gyro1s.gyro_y[i];
+                    sum_z += gyro1s.gyro_z[i];
+                }
+                int n = gyro1s.count;
+                ESP_LOGI(TAG, "  mean Gyro X=%.2f Y=%.2f Z=%.2f °/s", sum_x / n, sum_y / n, sum_z / n);
+                ESP_LOGI(TAG, "  first X=%.2f Y=%.2f Z=%.2f  last X=%.2f Y=%.2f Z=%.2f °/s",
+                        gyro1s.gyro_x[0], gyro1s.gyro_y[0], gyro1s.gyro_z[0],
+                        gyro1s.gyro_x[n - 1], gyro1s.gyro_y[n - 1], gyro1s.gyro_z[n - 1]);
+            }
+        }
+        else
+        {
+            ESP_LOGW(TAG, "MPU6050 readGyroForOneSecond failed");
+        }
+    }
+    else
+    {
+        ESP_LOGW(TAG, "MPU6050 init failed, skip sensor data");
+    }
 }

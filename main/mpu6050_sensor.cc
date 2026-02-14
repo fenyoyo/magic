@@ -1,291 +1,132 @@
 #include "mpu6050_sensor.h"
-#include "esp_log.h"
+#include <cstring>
+#include <esp_log.h>
+#include "i2cdev.h"
+#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-const char *MPU6050Sensor::TAG = "MPU6050Sensor";
-MPU6050Sensor *MPU6050Sensor::s_instance = nullptr;
+#define TAG "MPU6050"
 
-MPU6050Sensor::MPU6050Sensor()
-    : m_initialized(false), m_sampling(false), m_sampling_interval_ms(100), m_calibrated(false), m_task_handle(nullptr)
+#ifdef CONFIG_EXAMPLE_I2C_ADDRESS_LOW
+#define MPU6050_ADDR MPU6050_I2C_ADDRESS_LOW
+#else
+#define MPU6050_ADDR MPU6050_I2C_ADDRESS_HIGH
+#endif
+
+#define I2C_PORT I2C_NUM_0
+
+MPU6050Sensor::MPU6050Sensor() : m_ready(false)
 {
-    ESP_ERROR_CHECK(i2cdev_init());
+    memset(&m_dev, 0, sizeof(m_dev));
 }
 
 MPU6050Sensor::~MPU6050Sensor()
 {
-    stopSampling();
-    s_instance = nullptr;
+    if (m_ready)
+    {
+        mpu6050_free_desc(&m_dev);
+        m_ready = false;
+    }
 }
 
 MPU6050Sensor &MPU6050Sensor::getInstance()
 {
-    if (s_instance == nullptr)
-    {
-        s_instance = new MPU6050Sensor();
-    }
-    return *s_instance;
+    static MPU6050Sensor instance;
+    return instance;
 }
 
-bool MPU6050Sensor::checkDevicePresence()
+bool MPU6050Sensor::init()
 {
-    int retry_count = 0;
-    const int max_retries = 10;
-
-    while (retry_count < max_retries)
-    {
-        esp_err_t res = i2c_dev_probe(&m_dev.i2c_dev, I2C_DEV_WRITE);
-        if (res == ESP_OK)
-        {
-            ESP_LOGI(TAG, "Found MPU60x0 device");
-            return true;
-        }
-
-        ESP_LOGW(TAG, "MPU60x0 not found (attempt %d/%d)",
-                 retry_count + 1, max_retries);
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        retry_count++;
-    }
-
-    ESP_LOGE(TAG, "MPU60x0 device not found after %d attempts", max_retries);
-    return false;
-}
-
-bool MPU6050Sensor::initDevice()
-{
-    // 初始化设备描述符
-    esp_err_t ret = mpu6050_init_desc(&m_dev, ADDR, static_cast<i2c_port_t>(0), static_cast<gpio_num_t>(CONFIG_EXAMPLE_SDA_GPIO), static_cast<gpio_num_t>(CONFIG_EXAMPLE_SCL_GPIO));
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to initialize device descriptor: %s", esp_err_to_name(ret));
-        return false;
-    }
-
-    // 检查设备是否存在
-    if (!checkDevicePresence())
-    {
-        return false;
-    }
-
-    // 初始化MPU6050
-    ret = mpu6050_init(&m_dev);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to initialize MPU6050: %s", esp_err_to_name(ret));
-        return false;
-    }
-
-    ESP_LOGI(TAG, "MPU6050 initialized successfully");
-    ESP_LOGI(TAG, "Accel range: %d", m_dev.ranges.accel);
-    ESP_LOGI(TAG, "Gyro range:  %d", m_dev.ranges.gyro);
-
-    return true;
-}
-
-bool MPU6050Sensor::begin(uint8_t addr, int sda_pin, int scl_pin)
-{
-
-    if (m_initialized)
-    {
-        ESP_LOGW(TAG, "MPU6050 already initialized");
+    if (m_ready)
         return true;
+
+    static bool i2c_subsystem_inited = false;
+    if (!i2c_subsystem_inited)
+    {
+        esp_err_t err = i2cdev_init();
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "i2cdev_init failed: %s", esp_err_to_name(err));
+            return false;
+        }
+        i2c_subsystem_inited = true;
     }
 
-    m_device_addr = addr;
-    m_sda_pin = sda_pin;
-    m_scl_pin = scl_pin;
+    gpio_num_t sda = (gpio_num_t)CONFIG_EXAMPLE_SDA_GPIO;
+    gpio_num_t scl = (gpio_num_t)CONFIG_EXAMPLE_SCL_GPIO;
 
-    m_initialized = initDevice();
-    return m_initialized;
+    esp_err_t err = mpu6050_init_desc(&m_dev, MPU6050_ADDR, I2C_PORT, sda, scl);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "mpu6050_init_desc failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    err = mpu6050_init(&m_dev);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "mpu6050_init failed: %s", esp_err_to_name(err));
+        mpu6050_free_desc(&m_dev);
+        return false;
+    }
+
+    m_ready = true;
+    ESP_LOGI(TAG, "MPU6050 init OK (SDA=%d, SCL=%d, addr=0x%02x)", sda, scl, (unsigned)MPU6050_ADDR);
+    return true;
 }
 
-void MPU6050Sensor::calibrateGyro(int samples)
+bool MPU6050Sensor::getData(MPU6050Data &data)
 {
-    if (!m_initialized)
-    {
-        ESP_LOGE(TAG, "Device not initialized");
-        return;
-    }
-
-    ESP_LOGI(TAG, "Starting gyro calibration with %d samples...", samples);
-
-    // 清零偏移量
-    m_gyro_offset.x = 0;
-    m_gyro_offset.y = 0;
-    m_gyro_offset.z = 0;
-
-    // 等待传感器稳定
-    vTaskDelay(pdMS_TO_TICKS(1000));
-
-    // 采集样本
-    for (int i = 0; i < samples; i++)
-    {
-        mpu6050_acceleration_t accel;
-        mpu6050_rotation_t gyro;
-
-        if (mpu6050_get_motion(&m_dev, &accel, &gyro) == ESP_OK)
-        {
-            m_gyro_offset.x += gyro.x;
-            m_gyro_offset.y += gyro.y;
-            m_gyro_offset.z += gyro.z;
-        }
-
-        // 显示进度
-        if ((i + 1) % (samples / 10) == 0)
-        {
-            ESP_LOGI(TAG, "Calibration progress: %d%%", (i + 1) * 100 / samples);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(5));
-    }
-
-    // 计算平均值
-    m_gyro_offset.x /= samples;
-    m_gyro_offset.y /= samples;
-    m_gyro_offset.z /= samples;
-
-    m_calibrated = true;
-
-    ESP_LOGI(TAG, "Gyro calibration completed");
-    ESP_LOGI(TAG, "Gyro offsets: x=%.4f, y=%.4f, z=%.4f",
-             m_gyro_offset.x, m_gyro_offset.y, m_gyro_offset.z);
-}
-
-bool MPU6050Sensor::readData(mpu6050_acceleration_t &accel,
-                             mpu6050_rotation_t &gyro,
-                             float &temperature)
-{
-    if (!m_initialized)
-    {
+    if (!m_ready)
         return false;
-    }
 
-    // 读取温度
-    esp_err_t ret = mpu6050_get_temperature(&m_dev, &temperature);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to read temperature: %s", esp_err_to_name(ret));
-        return false;
-    }
+    mpu6050_acceleration_t accel;
+    mpu6050_rotation_t gyro;
 
-    // 读取运动数据
-    ret = mpu6050_get_motion(&m_dev, &accel, &gyro);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to read motion data: %s", esp_err_to_name(ret));
+    if (mpu6050_get_acceleration(&m_dev, &accel) != ESP_OK)
         return false;
-    }
+    if (mpu6050_get_rotation(&m_dev, &gyro) != ESP_OK)
+        return false;
+
+    data.accel_x = accel.x;
+    data.accel_y = accel.y;
+    data.accel_z = accel.z;
+    data.gyro_x = gyro.x;
+    data.gyro_y = gyro.y;
+    data.gyro_z = gyro.z;
+
+    data.temperature = 0.0f;
+    if (mpu6050_get_temperature(&m_dev, &data.temperature) != ESP_OK)
+        data.temperature = 0.0f;
 
     return true;
 }
 
-mpu6050_rotation_t MPU6050Sensor::getCalibratedGyro()
+bool MPU6050Sensor::readGyroForOneSecond(MPU6050GyroSnapshot &out)
 {
-    mpu6050_rotation_t gyro = {};
-    mpu6050_acceleration_t accel = {};
-    float temp;
+    if (!m_ready)
+        return false;
 
-    if (readData(accel, gyro, temp))
+    out.count = 0;
+    const int maxSamples = MPU6050_GYRO_SAMPLES_MAX;
+    const uint32_t intervalMs = 20;  // 50Hz，约 1 秒内 50 个点
+
+    mpu6050_rotation_t gyro;
+
+    for (int i = 0; i < maxSamples; i++)
     {
-        if (m_calibrated)
-        {
-            gyro.x -= m_gyro_offset.x;
-            gyro.y -= m_gyro_offset.y;
-            gyro.z -= m_gyro_offset.z;
-        }
+        if (mpu6050_get_rotation(&m_dev, &gyro) != ESP_OK)
+            break;
+
+        out.gyro_x[out.count] = gyro.x;
+        out.gyro_y[out.count] = gyro.y;
+        out.gyro_z[out.count] = gyro.z;
+        out.count++;
+
+        if (i < maxSamples - 1)
+            vTaskDelay(pdMS_TO_TICKS(intervalMs));
     }
 
-    return gyro;
-}
-
-void MPU6050Sensor::samplingTask(void *pvParameters)
-{
-    MPU6050Sensor *sensor = static_cast<MPU6050Sensor *>(pvParameters);
-
-    ESP_LOGI(TAG, "Sampling task started");
-
-    while (sensor->m_sampling)
-    {
-        mpu6050_acceleration_t accel = {};
-        mpu6050_rotation_t gyro = {};
-        float temperature = 0;
-
-        if (sensor->readData(accel, gyro, temperature))
-        {
-            // 应用陀螺仪校准
-            if (sensor->m_calibrated)
-            {
-                gyro.x -= sensor->m_gyro_offset.x;
-                gyro.y -= sensor->m_gyro_offset.y;
-                gyro.z -= sensor->m_gyro_offset.z;
-            }
-
-            // 触发回调
-            if (sensor->m_data_callback)
-            {
-                sensor->m_data_callback(accel, gyro, temperature);
-            }
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(sensor->m_sampling_interval_ms));
-    }
-
-    ESP_LOGI(TAG, "Sampling task stopped");
-    vTaskDelete(NULL);
-}
-
-void MPU6050Sensor::startSampling(int interval_ms)
-{
-    if (!m_initialized)
-    {
-        ESP_LOGE(TAG, "Cannot start sampling: device not initialized");
-        return;
-    }
-
-    if (m_sampling)
-    {
-        ESP_LOGW(TAG, "Sampling already running");
-        return;
-    }
-
-    m_sampling_interval_ms = interval_ms;
-    m_sampling = true;
-
-    // 创建采样任务
-    BaseType_t ret = xTaskCreatePinnedToCore(
-        samplingTask,
-        "mpu6050_task",
-        4096,
-        this,
-        5,
-        &m_task_handle,
-        tskNO_AFFINITY);
-
-    if (ret == pdPASS)
-    {
-        ESP_LOGI(TAG, "Sampling task created, interval: %d ms", interval_ms);
-    }
-    else
-    {
-        ESP_LOGE(TAG, "Failed to create sampling task");
-        m_sampling = false;
-    }
-}
-
-void MPU6050Sensor::stopSampling()
-{
-    if (m_sampling)
-    {
-        m_sampling = false;
-
-        if (m_task_handle != nullptr)
-        {
-            vTaskDelay(pdMS_TO_TICKS(100));
-            vTaskDelete(m_task_handle);
-            m_task_handle = nullptr;
-        }
-
-        ESP_LOGI(TAG, "Sampling stopped");
-    }
+    return out.count > 0;
 }
