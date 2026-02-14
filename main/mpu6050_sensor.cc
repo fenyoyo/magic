@@ -103,30 +103,15 @@ bool MPU6050Sensor::getData(MPU6050Data &data)
     return true;
 }
 
-bool MPU6050Sensor::readGyroForOneSecond(MPU6050GyroSnapshot &out)
+bool MPU6050Sensor::getGyro(float &gx, float &gy, float &gz)
 {
     if (!m_ready)
         return false;
-
-    out.count = 0;
-    const int maxSamples = MPU6050_GYRO_SAMPLES_MAX;
-    const uint32_t intervalMs = 20;  // 50Hz，约 1 秒内 50 个点
-
     mpu6050_rotation_t gyro;
-
-    for (int i = 0; i < maxSamples; i++)
-    {
-        if (mpu6050_get_rotation(&m_dev, &gyro) != ESP_OK)
-            break;
-
-        out.gyro_x[out.count] = gyro.x;
-        out.gyro_y[out.count] = gyro.y;
-        out.gyro_z[out.count] = gyro.z;
-        out.count++;
-
-        if (i < maxSamples - 1)
-            vTaskDelay(pdMS_TO_TICKS(intervalMs));
-    }
-
-    return out.count > 0;
+    if (mpu6050_get_rotation(&m_dev, &gyro) != ESP_OK)
+        return false;
+    gx = gyro.x;
+    gy = gyro.y;
+    gz = gyro.z;
+    return true;
 }

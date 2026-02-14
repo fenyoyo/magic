@@ -4,8 +4,14 @@
 #include "mqtt_manager.h"
 #include <string>
 #include "mpu6050_sensor.h"
+#include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define TAG "Application"
+/** 按钮 GPIO：按下为低电平（接 GND），松开为高电平（内部上拉） */
+#define BUTTON_GPIO       GPIO_NUM_4
+#define GYRO_STREAM_MS   5
 
 Application::Application()
 {
@@ -61,6 +67,51 @@ void Application::onMQTTConnection(bool connected)
     }
 }
 
+/** 陀螺仪 MQTT 发布主题 */
+#define MQTT_TOPIC_GYRO "device/gyro"
+
+/** 按钮按下时每 5ms 读陀螺仪并通过 MQTT 发送，松开停止 */
+static void button_gyro_task(void *arg)
+{
+    gpio_config_t io = {};
+    io.pin_bit_mask = (1ULL << BUTTON_GPIO);
+    io.mode = GPIO_MODE_INPUT;
+    io.pull_up_en = GPIO_PULLUP_ENABLE;
+    io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&io);
+
+    auto &mpu = MPU6050Sensor::getInstance();
+    auto &mqtt = MQTTManager::getInstance();
+    uint32_t seq = 0;
+    char payload[80];
+
+    for (;;)
+    {
+        if (gpio_get_level(BUTTON_GPIO) == 0)
+        {
+            seq = 0;
+            ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
+            while (gpio_get_level(BUTTON_GPIO) == 0)
+            {
+                float gx, gy, gz;
+                if (mpu.getGyro(gx, gy, gz))
+                {
+                    int len = snprintf(payload, sizeof(payload),
+                                       "{\"seq\":%u,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f}",
+                                       (unsigned)seq, gx, gy, gz);
+                    if (len > 0 && (size_t)len < sizeof(payload) && mqtt.isConnected())
+                        mqtt.publish(MQTT_TOPIC_GYRO, payload, (size_t)len, 0, 0);
+                    seq++;
+                }
+                vTaskDelay(pdMS_TO_TICKS(GYRO_STREAM_MS));
+            }
+            ESP_LOGI(TAG, "Button released, gyro MQTT stream end (total %u)", (unsigned)seq);
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+}
+
 void Application::onMQTTError(int error_type, void *error_data)
 {
     ESP_LOGE(TAG, "MQTT Error occurred: %d", error_type);
@@ -108,38 +159,15 @@ void Application::Start()
     auto &mpu = MPU6050Sensor::getInstance();
     if (mpu.init())
     {
-        MPU6050Data data;
-        if (mpu.getData(data))
-        {
-            ESP_LOGI(TAG, "MPU6050 Accel: X=%.3f Y=%.3f Z=%.3f g", data.accel_x, data.accel_y, data.accel_z);
-            ESP_LOGI(TAG, "MPU6050 Gyro:  X=%.2f Y=%.2f Z=%.2f °/s", data.gyro_x, data.gyro_y, data.gyro_z);
-            ESP_LOGI(TAG, "MPU6050 Temp:  %.2f °C", data.temperature);
-        }
+        // MPU6050Data data;
+        // if (mpu.getData(data))
+        // {
+        //     ESP_LOGI(TAG, "MPU6050 Accel: X=%.3f Y=%.3f Z=%.3f g", data.accel_x, data.accel_y, data.accel_z);
+        //     ESP_LOGI(TAG, "MPU6050 Gyro:  X=%.2f Y=%.2f Z=%.2f °/s", data.gyro_x, data.gyro_y, data.gyro_z);
+        //     ESP_LOGI(TAG, "MPU6050 Temp:  %.2f °C", data.temperature);
+        // }
 
-        MPU6050GyroSnapshot gyro1s;
-        if (mpu.readGyroForOneSecond(gyro1s))
-        {
-            ESP_LOGI(TAG, "MPU6050 1s gyro: %d samples", gyro1s.count);
-            if (gyro1s.count > 0)
-            {
-                float sum_x = 0, sum_y = 0, sum_z = 0;
-                for (int i = 0; i < gyro1s.count; i++)
-                {
-                    sum_x += gyro1s.gyro_x[i];
-                    sum_y += gyro1s.gyro_y[i];
-                    sum_z += gyro1s.gyro_z[i];
-                }
-                int n = gyro1s.count;
-                ESP_LOGI(TAG, "  mean Gyro X=%.2f Y=%.2f Z=%.2f °/s", sum_x / n, sum_y / n, sum_z / n);
-                ESP_LOGI(TAG, "  first X=%.2f Y=%.2f Z=%.2f  last X=%.2f Y=%.2f Z=%.2f °/s",
-                        gyro1s.gyro_x[0], gyro1s.gyro_y[0], gyro1s.gyro_z[0],
-                        gyro1s.gyro_x[n - 1], gyro1s.gyro_y[n - 1], gyro1s.gyro_z[n - 1]);
-            }
-        }
-        else
-        {
-            ESP_LOGW(TAG, "MPU6050 readGyroForOneSecond failed");
-        }
+        xTaskCreate(button_gyro_task, "btn_gyro", 3072, nullptr, 5, nullptr);
     }
     else
     {
