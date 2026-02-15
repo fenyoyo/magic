@@ -11,10 +11,10 @@
 
 #define TAG "Application"
 /** 按钮 GPIO：按下为低电平（接 GND），松开为高电平（内部上拉） */
-#define BUTTON_GPIO       GPIO_NUM_4
+#define BUTTON_GPIO GPIO_NUM_4
 /** LED GPIO：按下按钮时亮，松开时灭 */
-#define LED_GPIO          GPIO_NUM_5
-#define GYRO_STREAM_MS   5
+#define LED_GPIO GPIO_NUM_5
+#define GYRO_STREAM_MS 5
 
 /** 陀螺仪 MQTT 发布主题 */
 /** publish 失败（队列满）时等待时间，让已排队消息发完 */
@@ -74,8 +74,6 @@ void Application::onMQTTConnection(bool connected)
         // 可以在这里添加重连逻辑
     }
 }
-
-
 
 /** 实时将陀螺仪/加速度数据显示到 OLED */
 void Application::oled_imu_task(void *arg)
@@ -197,9 +195,9 @@ void Application::Start()
     auto &mpu = MPU6050Sensor::getInstance();
     if (mpu.init())
     {
-        if (oled_init()){
-            xTaskCreate(oled_imu_task, "oled_imu", 2048, this, 4, &m_oled_task_handle);
-        }
+        // if (oled_init()){
+        //     xTaskCreate(oled_imu_task, "oled_imu", 2048, this, 4, &m_oled_task_handle);
+        // }
         xTaskCreate(button_gyro_task, "btn_gyro", 3072, this, 5, &m_button_gyro_task_handle);
     }
     else
