@@ -4,7 +4,6 @@
 #include "mqtt_manager.h"
 #include <string>
 #include "mpu6050_sensor.h"
-#include "oled_display.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -72,20 +71,6 @@ void Application::onMQTTConnection(bool connected)
     {
         ESP_LOGW(TAG, "MQTT Disconnected!");
         // 可以在这里添加重连逻辑
-    }
-}
-
-/** 实时将陀螺仪/加速度数据显示到 OLED */
-void Application::oled_imu_task(void *arg)
-{
-    auto &mpu = MPU6050Sensor::getInstance();
-    MPU6050Data data;
-    for (;;)
-    {
-        if (mpu.getData(data))
-            oled_show_imu(data.gyro_x, data.gyro_y, data.gyro_z,
-                          data.accel_x, data.accel_y, data.accel_z);
-        vTaskDelay(pdMS_TO_TICKS(OLED_UPDATE_MS));
     }
 }
 
@@ -191,13 +176,11 @@ void Application::Start()
                           { this->onMQTTError(error_type, error_data); });
     mqtt.init();
 
-    // 第三步启动 MPU6050、OLED，并启动按钮任务与 OLED 实时显示
+    // 第三步启动 MPU6050
     auto &mpu = MPU6050Sensor::getInstance();
     if (mpu.init())
     {
-        // if (oled_init()){
-        //     xTaskCreate(oled_imu_task, "oled_imu", 2048, this, 4, &m_oled_task_handle);
-        // }
+
         xTaskCreate(button_gyro_task, "btn_gyro", 3072, this, 5, &m_button_gyro_task_handle);
     }
     else

@@ -16,8 +16,6 @@ private:
 
     TaskHandle_t m_oled_task_handle = nullptr;
     TaskHandle_t m_button_gyro_task_handle = nullptr;
-
-    static void oled_imu_task(void *arg);
     static void button_gyro_task(void *arg);
 
 public:
