@@ -9,6 +9,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+// 定义USE_KALMAN_FILTER宏以启用卡尔曼滤波器
+// #define USE_KALMAN_FILTER 1
+#include "mpu6050_kalman_filter.h"
+
 #define TAG "Application"
 /** 按钮 GPIO：按下为低电平（接 GND），松开为高电平（内部上拉） */
 #define BUTTON_GPIO GPIO_NUM_4
@@ -104,9 +108,15 @@ void Application::button_gyro_task(void *arg)
     uint32_t seq = 0;
     char payload[80];
 
-    // 创建滑动平均滤波器，窗口大小可以根据需要调整
-    const size_t FILTER_WINDOW_SIZE = CONFIG_MPU6050_FILTER_WINDOW_SIZE; // 平均最近N个数据点
-    MPU6050DataFilter data_filter(FILTER_WINDOW_SIZE);
+    // 选择滤波器类型：可以选择使用滑动平均滤波或卡尔曼滤波
+    const size_t FILTER_WINDOW_SIZE = CONFIG_MPU6050_FILTER_WINDOW_SIZE;          // 平均最近N个数据点
+    MPU6050DataFilter data_filter(FILTER_WINDOW_SIZE, FilterType::KALMAN_FILTER); // 使用卡尔曼滤波
+
+    // 如果使用卡尔曼滤波，可以设置特定的噪声参数
+    if (data_filter.getFilterType() == FilterType::KALMAN_FILTER)
+    {
+        data_filter.setKalmanParameters(0.01f, 0.02f); // 陀螺仪噪声, 加速度计噪声
+    }
 
     for (;;)
     {
@@ -116,26 +126,33 @@ void Application::button_gyro_task(void *arg)
             gpio_set_level(LED_GPIO, 1);
             ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
             mqtt.publish("/device/start", "", 0, 0, 0);
-            
+
             // 重置滤波器，开始新的数据流
             data_filter.reset();
-            
+
+            TickType_t last_wake_time = xTaskGetTickCount(); // 用于计算时间间隔
+
             while (gpio_get_level(BUTTON_GPIO) == 0)
             {
                 MPU6050Data raw_data;
                 if (mpu.getData(raw_data))
                 {
-                    // 应用滑动平均滤波
-                    MPU6050Data filtered_data = data_filter.filterData(raw_data);
-                    
+                    // 计算时间间隔（秒）用于卡尔曼滤波
+                    TickType_t current_time = xTaskGetTickCount();
+                    float dt = (float)(current_time - last_wake_time) * portTICK_PERIOD_MS / 1000.0f;
+                    last_wake_time = current_time;
+
+                    // 应用所选滤波器（滑动平均或卡尔曼）
+                    MPU6050Data filtered_data = data_filter.filterData(raw_data, dt);
+
                     int len = snprintf(payload, sizeof(payload),
                                        "{\"seq\":%u,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f}",
-                                       (unsigned)seq, 
-                                       filtered_data.gyro_x, 
-                                       filtered_data.gyro_y, 
-                                       filtered_data.gyro_z, 
-                                       filtered_data.accel_x, 
-                                       filtered_data.accel_y, 
+                                       (unsigned)seq,
+                                       filtered_data.gyro_x,
+                                       filtered_data.gyro_y,
+                                       filtered_data.gyro_z,
+                                       filtered_data.accel_x,
+                                       filtered_data.accel_y,
                                        filtered_data.accel_z);
                     if (len > 0 && (size_t)len < sizeof(payload) && mqtt.isConnected())
                     {
@@ -203,7 +220,7 @@ void Application::Start()
     auto &mpu = MPU6050Sensor::getInstance();
     if (mpu.init())
     {
-        ESP_LOGI(TAG, "MPU6050 initialized successfully with sliding average filter (window size: %d)", 
+        ESP_LOGI(TAG, "MPU6050 initialized successfully with sliding average filter (window size: %d)",
                  CONFIG_MPU6050_FILTER_WINDOW_SIZE);
         xTaskCreate(button_gyro_task, "btn_gyro", 3072, this, 5, &m_button_gyro_task_handle);
     }
