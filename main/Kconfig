@@ -1,0 +1,22 @@
+# MPU6050 滤波器配置选项
+
+menu "MPU6050 Filter Options"
+    depends on MPU6050
+
+config MPU6050_FILTER_ENABLED
+    bool "Enable MPU6050 Data Filtering"
+    default y
+    help
+      Enable sliding average filtering for MPU6050 sensor data to reduce noise.
+
+config MPU6050_FILTER_WINDOW_SIZE
+    int "Sliding Average Filter Window Size"
+    range 2 20
+    default 5
+    depends on MPU6050_FILTER_ENABLED
+    help
+      Number of samples to average in the sliding window filter.
+      Larger values provide more smoothing but increase latency.
+      Range is 2-20, default is 5.
+
+endmenu

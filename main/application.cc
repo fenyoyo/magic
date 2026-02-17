@@ -4,6 +4,7 @@
 #include "mqtt_manager.h"
 #include <string>
 #include "mpu6050_sensor.h"
+#include "sliding_average_filter.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -19,6 +20,11 @@
 /** publish 失败（队列满）时等待时间，让已排队消息发完 */
 #define MQTT_BACKPRESSURE_MS 30
 #define OLED_UPDATE_MS 100
+
+// 滑动平均滤波器窗口大小配置
+#ifndef CONFIG_MPU6050_FILTER_WINDOW_SIZE
+#define CONFIG_MPU6050_FILTER_WINDOW_SIZE 5
+#endif
 
 Application::Application()
 {
@@ -98,6 +104,10 @@ void Application::button_gyro_task(void *arg)
     uint32_t seq = 0;
     char payload[80];
 
+    // 创建滑动平均滤波器，窗口大小可以根据需要调整
+    const size_t FILTER_WINDOW_SIZE = CONFIG_MPU6050_FILTER_WINDOW_SIZE; // 平均最近N个数据点
+    MPU6050DataFilter data_filter(FILTER_WINDOW_SIZE);
+
     for (;;)
     {
         if (gpio_get_level(BUTTON_GPIO) == 0)
@@ -106,14 +116,27 @@ void Application::button_gyro_task(void *arg)
             gpio_set_level(LED_GPIO, 1);
             ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
             mqtt.publish("/device/start", "", 0, 0, 0);
+            
+            // 重置滤波器，开始新的数据流
+            data_filter.reset();
+            
             while (gpio_get_level(BUTTON_GPIO) == 0)
             {
-                MPU6050Data data;
-                if (mpu.getData(data))
+                MPU6050Data raw_data;
+                if (mpu.getData(raw_data))
                 {
+                    // 应用滑动平均滤波
+                    MPU6050Data filtered_data = data_filter.filterData(raw_data);
+                    
                     int len = snprintf(payload, sizeof(payload),
                                        "{\"seq\":%u,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f}",
-                                       (unsigned)seq, data.gyro_x, data.gyro_y, data.gyro_z, data.accel_x, data.accel_y, data.accel_z);
+                                       (unsigned)seq, 
+                                       filtered_data.gyro_x, 
+                                       filtered_data.gyro_y, 
+                                       filtered_data.gyro_z, 
+                                       filtered_data.accel_x, 
+                                       filtered_data.accel_y, 
+                                       filtered_data.accel_z);
                     if (len > 0 && (size_t)len < sizeof(payload) && mqtt.isConnected())
                     {
                         int msg_id = mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
@@ -180,7 +203,8 @@ void Application::Start()
     auto &mpu = MPU6050Sensor::getInstance();
     if (mpu.init())
     {
-
+        ESP_LOGI(TAG, "MPU6050 initialized successfully with sliding average filter (window size: %d)", 
+                 CONFIG_MPU6050_FILTER_WINDOW_SIZE);
         xTaskCreate(button_gyro_task, "btn_gyro", 3072, this, 5, &m_button_gyro_task_handle);
     }
     else
