@@ -77,3 +77,9 @@ Desktop.ini
 *.suo       # Visual Studio Solution User Options
 *.sln.docstates # Visual Studio
 .vscode/
+
+/model/data
+/model/.idea
+/model/*.h5
+/model/*.pkl
+/model/*.png
