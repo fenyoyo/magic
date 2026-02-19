@@ -13,6 +13,9 @@
 // #define USE_KALMAN_FILTER 1
 #include "mpu6050_kalman_filter.h"
 
+// 包含陀螺仪预测器
+#include "gyro_predictor.h"
+
 #define TAG "Application"
 /** 按钮 GPIO：按下为低电平（接 GND），松开为高电平（内部上拉） */
 #define BUTTON_GPIO GPIO_NUM_4
@@ -33,10 +36,29 @@
 Application::Application()
 {
     ESP_LOGI(TAG, "Application init");
+
+    // 初始化陀螺仪预测器
+    m_gyro_predictor = new GyroPredictor();
+    if (m_gyro_predictor->Init())
+    {
+        ESP_LOGI(TAG, "Gyro predictor initialized successfully");
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to initialize gyro predictor");
+        delete m_gyro_predictor;
+        m_gyro_predictor = nullptr;
+    }
 }
 
 Application::~Application()
 {
+    // 清理陀螺仪预测器
+    if (m_gyro_predictor)
+    {
+        delete m_gyro_predictor;
+        m_gyro_predictor = nullptr;
+    }
 }
 
 void Application::onMQTTMessage(const std::string &topic, const std::string &data, int &data_len)
@@ -106,7 +128,10 @@ void Application::button_gyro_task(void *arg)
     auto &mpu = MPU6050Sensor::getInstance();
     auto &mqtt = MQTTManager::getInstance();
     uint32_t seq = 0;
-    char payload[80];
+    char payload[120]; // 增加payload大小以容纳预测数据
+
+    // 获取当前应用实例
+    Application *app_instance = static_cast<Application *>(arg);
 
     // 选择滤波器类型：可以选择使用滑动平均滤波或卡尔曼滤波
     const size_t FILTER_WINDOW_SIZE = CONFIG_MPU6050_FILTER_WINDOW_SIZE;          // 平均最近N个数据点
@@ -145,7 +170,42 @@ void Application::button_gyro_task(void *arg)
                     // 应用所选滤波器（滑动平均或卡尔曼）
                     MPU6050Data filtered_data = data_filter.filterData(raw_data, dt);
 
-                    int len = snprintf(payload, sizeof(payload),
+                    // 如果陀螺仪预测器可用，执行预测
+                    float prediction_result[1] = {0.0f}; // 假设模型输出单个值
+                    bool prediction_success = false;
+
+                    if (app_instance && app_instance->m_gyro_predictor != nullptr)
+                    {
+                        // 准备输入数据 - 使用过滤后的陀螺仪数据作为输入
+                        float input_data[6] = {
+                            filtered_data.gyro_x,
+                            filtered_data.gyro_y,
+                            filtered_data.gyro_z,
+                            filtered_data.accel_x,
+                            filtered_data.accel_y,
+                            filtered_data.accel_z};
+
+                        prediction_success = app_instance->m_gyro_predictor->Predict(input_data, 6, prediction_result, 1);
+                    }
+
+                    // 创建包含原始数据和预测结果的payload
+                    int len;
+                    if (prediction_success)
+                    {
+                        len = snprintf(payload, sizeof(payload),
+                                       "{\"seq\":%u,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f,\"pred\":%.2f}",
+                                       (unsigned)seq,
+                                       filtered_data.gyro_x,
+                                       filtered_data.gyro_y,
+                                       filtered_data.gyro_z,
+                                       filtered_data.accel_x,
+                                       filtered_data.accel_y,
+                                       filtered_data.accel_z,
+                                       prediction_result[0]);
+                    }
+                    else
+                    {
+                        len = snprintf(payload, sizeof(payload),
                                        "{\"seq\":%u,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f}",
                                        (unsigned)seq,
                                        filtered_data.gyro_x,
@@ -154,6 +214,8 @@ void Application::button_gyro_task(void *arg)
                                        filtered_data.accel_x,
                                        filtered_data.accel_y,
                                        filtered_data.accel_z);
+                    }
+
                     if (len > 0 && (size_t)len < sizeof(payload) && mqtt.isConnected())
                     {
                         int msg_id = mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);

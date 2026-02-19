@@ -4,6 +4,10 @@
 #include <string>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+// Forward declaration for GyroPredictor to avoid including the header here
+class GyroPredictor;
+
 class Application
 {
 private:
@@ -16,6 +20,10 @@ private:
 
     TaskHandle_t m_oled_task_handle = nullptr;
     TaskHandle_t m_button_gyro_task_handle = nullptr;
+    
+    // 添加陀螺仪预测器实例
+    GyroPredictor* m_gyro_predictor = nullptr;
+    
     static void button_gyro_task(void *arg);
 
 public:

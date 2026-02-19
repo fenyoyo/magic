@@ -65,6 +65,30 @@ dependencies:
     - esp32s2
     - esp32s3
     version: 2.1.9
+  espressif/esp-nn:
+    component_hash: f4633a02f05fef53b80de65ade1f733ebdef637e4c8b8be4eb11f5e27f6d9f3e
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.2'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.1.2
+  espressif/esp-tflite-micro:
+    component_hash: 57aa3889d3c7b7a513f716c2cb8707476a5bf42971d63a6f6d38a5616d862e57
+    dependencies:
+    - name: espressif/esp-nn
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=1.1.1'
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.3.5
   idf:
     source:
       type: idf
@@ -73,6 +97,7 @@ direct_dependencies:
 - esp-idf-lib/esp_idf_lib_helpers
 - esp-idf-lib/i2cdev
 - esp-idf-lib/mpu6050
-manifest_hash: 53f3a4cddf4ef6f04723c42bcc732c467fa6237d3f91842b716b7028d6bd2ca8
+- espressif/esp-tflite-micro
+manifest_hash: 5b941dd7170a2f065d05490134a396cb7af7f177832bf7e4d6a3b2806cada945
 target: esp32s3
 version: 2.0.0

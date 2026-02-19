@@ -1,7 +1,8 @@
 dependencies:
   esp-idf-lib/mpu6050:
-    version: "*"
+    version: '*'
   esp-idf-lib/esp_idf_lib_helpers:
-    version: "*"
+    version: '*'
   esp-idf-lib/i2cdev:
-    version: "*"
+    version: '*'
+  espressif/esp-tflite-micro: '*'
