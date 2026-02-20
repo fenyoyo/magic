@@ -172,49 +172,19 @@ void Application::button_gyro_task(void *arg)
 
                     // 如果陀螺仪预测器可用，执行预测
                     float prediction_result[1] = {0.0f}; // 假设模型输出单个值
-                    bool prediction_success = false;
-
-                    if (app_instance && app_instance->m_gyro_predictor != nullptr)
-                    {
-                        // 准备输入数据 - 使用过滤后的陀螺仪数据作为输入
-                        float input_data[6] = {
-                            filtered_data.gyro_x,
-                            filtered_data.gyro_y,
-                            filtered_data.gyro_z,
-                            filtered_data.accel_x,
-                            filtered_data.accel_y,
-                            filtered_data.accel_z};
-
-                        prediction_success = app_instance->m_gyro_predictor->Predict(input_data, 6, prediction_result, 1);
-                    }
 
                     // 创建包含原始数据和预测结果的payload
                     int len;
-                    if (prediction_success)
-                    {
-                        len = snprintf(payload, sizeof(payload),
-                                       "{\"seq\":%u,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f,\"pred\":%.2f}",
-                                       (unsigned)seq,
-                                       filtered_data.gyro_x,
-                                       filtered_data.gyro_y,
-                                       filtered_data.gyro_z,
-                                       filtered_data.accel_x,
-                                       filtered_data.accel_y,
-                                       filtered_data.accel_z,
-                                       prediction_result[0]);
-                    }
-                    else
-                    {
-                        len = snprintf(payload, sizeof(payload),
-                                       "{\"seq\":%u,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f}",
-                                       (unsigned)seq,
-                                       filtered_data.gyro_x,
-                                       filtered_data.gyro_y,
-                                       filtered_data.gyro_z,
-                                       filtered_data.accel_x,
-                                       filtered_data.accel_y,
-                                       filtered_data.accel_z);
-                    }
+
+                    len = snprintf(payload, sizeof(payload),
+                                   "{\"seq\":%u,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f}",
+                                   (unsigned)seq,
+                                   filtered_data.gyro_x,
+                                   filtered_data.gyro_y,
+                                   filtered_data.gyro_z,
+                                   filtered_data.accel_x,
+                                   filtered_data.accel_y,
+                                   filtered_data.accel_z);
 
                     if (len > 0 && (size_t)len < sizeof(payload) && mqtt.isConnected())
                     {

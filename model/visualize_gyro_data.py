@@ -267,8 +267,9 @@ def main():
 
 
 
-    file = './data/circle_001.csv'
-    
+    # file = './data/circle_001.csv'
+    file = './triangle/gyro_data_20260220_015154.csv'
+
     visualize_gyro_data(file, './output')
 
 

@@ -83,3 +83,4 @@ Desktop.ini
 /model/*.h5
 /model/*.pkl
 /model/*.png
+/model/triangle
