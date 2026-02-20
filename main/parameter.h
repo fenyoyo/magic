@@ -17,6 +17,8 @@ typedef struct
 
 typedef struct
 {
+	int seq;
+	float dt;
 	int ax;
 	int ay;
 	int az;

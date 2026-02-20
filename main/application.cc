@@ -111,30 +111,36 @@ void getWorldAccel()
 void Application::mqtt_trans(void *pvParameters)
 {
     ESP_LOGI(TAG, "mqtt Start");
-    // auto &mqtt = MQTTManager::getInstance();
-    // POSE_a pose;
-    // while (1)
-    // {
-    //     if (xQueueReceive(xQueueTrans, &pose, portMAX_DELAY))
-    //     {
-    //         ESP_LOGI(TAG, "pose=%d %d %d", pose.ax, pose.ay, pose.az);
-    //         // sprintf(buffer, "y168.8099yp12.7914pr-11.8401r");
-    //         // int buflen = sprintf(buffer, "y%fyp%fpr%fr", pose.yaw, pose.pitch, pose.roll);
-    //         // ret = lwip_sendto(fd, buffer, buflen, 0, (struct sockaddr *)&addr, sizeof(addr));
-    //         // LWIP_ASSERT("ret == buflen", ret == buflen);
-    //         // ESP_LOGD(TAG, "lwip_sendto ret=%d", ret);
-    //     }
-    //     else
-    //     {
-    //         ESP_LOGE(TAG, "xQueueReceive fail");
-    //         break;
-    //     }
+    auto &mqtt = MQTTManager::getInstance();
+    POSE_a pose;
+    char payload[120];
+    while (1)
+    {
+        if (xQueueReceive(xQueueTrans, &pose, portMAX_DELAY))
+        {
+            // ESP_LOGI(TAG, "pose=%d %d %d", pose.ax, pose.ay, pose.az);
+            int len;
+            len = snprintf(payload, sizeof(payload),
+                           "{\"seq\":%u,\"dt\":%f,\"x\":%d,\"y\":%d,\"z\":%d}",
+                           (unsigned)pose.seq,
+                           pose.dt,
+                           pose.ax,
+                           pose.ay,
+                           pose.az);
+            mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
+            // sprintf(buffer, "y168.8099yp12.7914pr-11.8401r");
+            // int buflen = sprintf(buffer, "y%fyp%fpr%fr", pose.yaw, pose.pitch, pose.roll);
+            // ret = lwip_sendto(fd, buffer, buflen, 0, (struct sockaddr *)&addr, sizeof(addr));
+            // LWIP_ASSERT("ret == buflen", ret == buflen);
+            // ESP_LOGD(TAG, "lwip_sendto ret=%d", ret);
+        }
 
-    //     // printf("mqtt_trans\n");
-    //     // vTaskDelay(1000 / portTICK_PERIOD_MS);
-    // }
-    // vTaskDelete(NULL);
+        // printf("mqtt_trans\n");
+        // vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
 }
+
 void Application::mpu6050(void *pvParameters)
 {
     // Initialize mpu6050
@@ -171,9 +177,9 @@ void Application::mpu6050(void *pvParameters)
     mpu.CalibrateGyro(6);
     mpu.setDMPEnabled(true);
     // TickType_t last_wake_time = xTaskGetTickCount();
-    // auto &mqtt = MQTTManager::getInstance();
+    auto &mqtt = MQTTManager::getInstance();
     uint32_t seq = 0;
-    char payload[120];
+
     while (1)
     {
         if (gpio_get_level(BUTTON_GPIO) == 0)
@@ -182,6 +188,7 @@ void Application::mpu6050(void *pvParameters)
             gpio_set_level(LED_GPIO, 1);
             TickType_t last_wake_time = xTaskGetTickCount(); // 用于计算时间间隔
             ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
+            mqtt.publish("/device/start", "", 0, 0, 0);
             while (gpio_get_level(BUTTON_GPIO) == 0)
             {
                 if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
@@ -189,8 +196,6 @@ void Application::mpu6050(void *pvParameters)
                     // float _roll = ypr[2] * RAD_TO_DEG;
                     // float _pitch = ypr[1] * RAD_TO_DEG;
                     // float _yaw = ypr[0] * RAD_TO_DEG;
-
-                    seq = 0;
                     gpio_set_level(LED_GPIO, 1);
                     TickType_t current_time = xTaskGetTickCount();
                     float dt = (float)(current_time - last_wake_time) * portTICK_PERIOD_MS;
@@ -208,23 +213,24 @@ void Application::mpu6050(void *pvParameters)
                     // ESP_LOGI(TAG, "%s", payload);
                     getWorldAccel();
 
-                    // POSE_a pose;
-                    // pose.ax = aaWorld.x;
-                    // pose.ay = aaWorld.y;
-                    // pose.az = aaWorld.z;
-                    // if (xQueueSend(xQueueTrans, &pose, 100) != pdPASS)
-                    // {
-                    //     ESP_LOGE(TAG, "xQueueSend fail");
-                    // }
-
-                    len = snprintf(payload, sizeof(payload),
-                                   "{\"seq\":%u,\"time\":%f,\"x\":%d,\"y\":%d,\"z\":%d}",
-                                   (unsigned)seq,
-                                   dt,
-                                   aaWorld.x,
-                                   aaWorld.y,
-                                   aaWorld.z);
-                    ESP_LOGI(TAG, "%s", payload);
+                    POSE_a pose;
+                    pose.seq = seq;
+                    pose.dt = dt;
+                    pose.ax = aaWorld.x;
+                    pose.ay = aaWorld.y;
+                    pose.az = aaWorld.z;
+                    if (xQueueSend(xQueueTrans, &pose, 100) != pdPASS)
+                    {
+                        ESP_LOGE(TAG, "xQueueSend fail");
+                    }
+                    // len = snprintf(payload, sizeof(payload),
+                    //                "{\"seq\":%u,\"time\":%f,\"x\":%d,\"y\":%d,\"z\":%d}",
+                    //                (unsigned)seq,
+                    //                dt,
+                    //                aaWorld.x,
+                    //                aaWorld.y,
+                    //                aaWorld.z);
+                    // ESP_LOGI(TAG, "%s", payload);
                     // mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
                 }
                 else
@@ -235,7 +241,7 @@ void Application::mpu6050(void *pvParameters)
                 vTaskDelay(pdMS_TO_TICKS(GYRO_STREAM_MS));
             }
             gpio_set_level(LED_GPIO, 0);
-            // mqtt.publish("/device/stop", "", 0, 0, 0);
+            mqtt.publish("/device/stop", "", 0, 0, 0);
             ESP_LOGI(TAG, "Button released, gyro MQTT stream end (total %u)", (unsigned)seq);
         }
 
@@ -355,7 +361,7 @@ void Application::onMQTTError(int error_type, void *error_data)
         break;
     }
 }
-
+QueueHandle_t Application::xQueueTrans = nullptr;
 void Application::Start()
 {
     // printf("Application started\n");
@@ -382,12 +388,10 @@ void Application::Start()
     mqtt.init();
     // Initialize i2c
     I2Cdev::initialize(400000);
+    xQueueTrans = xQueueCreate(10, sizeof(POSE_a));
 
-    xQueueTrans = xQueueCreate(10, sizeof(POSE_t));
     configASSERT(xQueueTrans);
-
     // Start imu task
     xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);
-
-    // xTaskCreate(&mqtt_trans, "UDP", 1024 * 3, NULL, 5, NULL);
+    xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL);
 }

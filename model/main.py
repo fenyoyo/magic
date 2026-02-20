@@ -4,6 +4,7 @@ import csv
 import os
 from datetime import datetime
 import  visualize_gyro_data
+import  acceleration_visualizer
 
 
 command = 'triangle'
@@ -24,7 +25,7 @@ class GyroDataCollector:
 
             # 初始化新的CSV文件
             with open(self.csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['last_wake_time', 'seq', 'ax', 'ay', 'az']
+                fieldnames = ['dt', 'seq', 'x', 'y', 'z']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
 
@@ -43,6 +44,7 @@ class GyroDataCollector:
             print(f"保存文件: {self.csv_filename}")
             print("=" * 30)
             # visualize_gyro_data.visualize_gyro_data(self.csv_filename)
+            acceleration_visualizer.show(self.csv_filename)
 
     def save_data(self, data):
         """保存单条数据"""
@@ -50,15 +52,20 @@ class GyroDataCollector:
             return False
 
         try:
-            # 添加时间戳
-            data_with_time = data.copy()
-            data_with_time['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            # 确保数据字典包含所有必需的字段
+            # row_data = {
+            #     'dt': data.get('dt', 0),
+            #     'seq': data.get('seq', 0),
+            #     'x': data.get('x', 0),
+            #     'y': data.get('y', 0),
+            #     'z': data.get('z', 0)
+            # }
 
             # 写入CSV文件
             with open(self.csv_filename, 'a', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['last_wake_time', 'seq', 'ax', 'ay', 'az']
+                fieldnames = ['dt', 'seq', 'x', 'y', 'z']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writerow(data_with_time)
+                writer.writerow(data)
             self.record_count += 1
             print(f"✓ 记录数据 #{self.record_count} (seq: {data.get('seq', 'N/A')})")
             return True
@@ -107,11 +114,15 @@ def on_message(client, userdata, msg):
 
             # 解析JSON格式的消息
             payload = json.loads(msg.payload.decode('utf-8'))
+            
+            # 处理不同格式的数据：如果接收的是"time"字段，则将其转换为"dt"
+            if 'time' in payload and 'dt' not in payload:
+                payload['dt'] = payload['time']
+            
             # 显示消息内容
             print(f"\n[{timestamp}] 收到陀螺仪数据:")
-            print(f"  数据: seq={payload.get('seq')}, "
-                  f"gx={payload.get('gx'):.2f}, gy={payload.get('gy'):.2f}, gz={payload.get('gz'):.2f}, "
-                  f"ax={payload.get('ax'):.2f}, ay={payload.get('ay'):.2f}, az={payload.get('az'):.2f}")
+            print(f"  数据: seq={payload.get('seq')}",
+                  f"dt={payload.get('dt')}, x={payload.get('x')}, y={payload.get('y')}, z={payload.get('z')}")
 
             # 只有在记录状态下才保存数据
             if collector.is_recording:
