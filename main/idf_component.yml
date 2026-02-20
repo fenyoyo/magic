@@ -6,3 +6,5 @@ dependencies:
   esp-idf-lib/i2cdev:
     version: '*'
   espressif/esp-tflite-micro: '*'
+  espressif/cjson:
+    version: "^1.7.0"

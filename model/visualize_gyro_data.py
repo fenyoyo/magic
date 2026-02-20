@@ -219,7 +219,7 @@ def visualize_gyro_data(csv_file, output_dir=None):
         os.makedirs(output_dir)
     
     # 确定列名
-    possible_cols = ['gx', 'gy', 'gz', 'x', 'y', 'z', 'rotation_x', 'rotation_y', 'rotation_z']
+    possible_cols = ['gx', 'gy', 'gz', 'ax', 'ay', 'az']
     gyro_cols = [col for col in possible_cols if col in df.columns]
     
     if len(gyro_cols) < 3:
@@ -232,26 +232,26 @@ def visualize_gyro_data(csv_file, output_dir=None):
             print("错误: 没有足够的数值列用于绘图")
             return
     
-    x_col, y_col, z_col = gyro_cols[:3]
+    gx_col, gy_col, gz_col,ax_col,ay_col,az_col = gyro_cols
     
-    print(f"使用列进行可视化: {x_col}, {y_col}, {z_col}")
+    print(f"使用列进行可视化: {gx_col}, {gy_col}, {gz_col}, {ax_col}, {ay_col}, {az_col}")
     
     # 生成3D轨迹图
-    fig_3d = plot_3d_trajectory(df, x_col, y_col, z_col)
+    # fig_3d = plot_3d_trajectory(df, gx_col, gy_col, gz_col)
     # if fig_3d:
     #     output_path = os.path.join(output_dir, 'gyro_3d_trajectory.png')
     #     fig_3d.savefig(output_path, dpi=300, bbox_inches='tight')
     #     print(f"3D轨迹图已保存至: {output_path}")
     
     # 生成2D投影图
-    fig_2d = plot_2d_projections(df, x_col, y_col, z_col)
+    # fig_2d = plot_2d_projections(df, gx_col, gy_col, gz_col)
     # if fig_2d:
     #     output_path = os.path.join(output_dir, 'gyro_2d_projections.png')
     #     fig_2d.savefig(output_path, dpi=300, bbox_inches='tight')
     #     print(f"2D投影图已保存至: {output_path}")
     
     # 生成时间序列图
-    fig_ts = plot_time_series(df, x_col, y_col, z_col)
+    # fig_ts = plot_time_series(df, gx_col, gy_col, gz_col)
     # if fig_ts:
     #     output_path = os.path.join(output_dir, 'gyro_time_series.png')
     #     fig_ts.savefig(output_path, dpi=300, bbox_inches='tight')

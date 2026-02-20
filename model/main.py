@@ -42,7 +42,7 @@ class GyroDataCollector:
             print(f"本次记录数据条数: {self.record_count}")
             print(f"保存文件: {self.csv_filename}")
             print("=" * 30)
-            visualize_gyro_data.visualize_gyro_data(self.csv_filename)
+            # visualize_gyro_data.visualize_gyro_data(self.csv_filename)
 
     def save_data(self, data):
         """保存单条数据"""
