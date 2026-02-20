@@ -24,7 +24,7 @@ class GyroDataCollector:
 
             # 初始化新的CSV文件
             with open(self.csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['timestamp', 'seq', 'gx', 'gy', 'gz', 'ax', 'ay', 'az']
+                fieldnames = ['last_wake_time', 'seq', 'ax', 'ay', 'az']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
 
@@ -56,7 +56,7 @@ class GyroDataCollector:
 
             # 写入CSV文件
             with open(self.csv_filename, 'a', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['timestamp', 'seq', 'gx', 'gy', 'gz', 'ax', 'ay', 'az']
+                fieldnames = ['last_wake_time', 'seq', 'ax', 'ay', 'az']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writerow(data_with_time)
             self.record_count += 1

@@ -1,10 +1,11 @@
-typedef struct {
+typedef struct
+{
 	uint16_t port;
 	char ipv4[20]; // xxx.xxx.xxx.xxx
 } PARAMETER_t;
 
-
-typedef struct {
+typedef struct
+{
 	float quatx;
 	float quaty;
 	float quatz;
@@ -14,3 +15,9 @@ typedef struct {
 	float yaw;
 } POSE_t;
 
+typedef struct
+{
+	int ax;
+	int ay;
+	int az;
+} POSE_a;

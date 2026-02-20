@@ -11,14 +11,10 @@ private:
     /* data */
     Application();
     ~Application();
-
+    static QueueHandle_t xQueueTrans;
     bool m_mqtt_connected;
-    bool m_device_status;
-
-    TaskHandle_t m_oled_task_handle = nullptr;
-    TaskHandle_t m_button_gyro_task_handle = nullptr;
-
-    static void button_gyro_task(void *arg);
+    static void mpu6050(void *arg);
+    static void mqtt_trans(void *arg);
 
 public:
     static Application &getInstance()
