@@ -46,73 +46,18 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 // orientation/motion vars
 Quaternion q;        // [w, x, y, z]			quaternion container
 VectorInt16 aa;      // [x, y, z]			accel sensor measurements
+VectorInt16 gg;      // [x, y, z]			accel sensor measurements
 VectorInt16 aaReal;  // [x, y, z]			gravity-free accel sensor measurements
 VectorInt16 aaWorld; // [x, y, z]			world-frame accel sensor measurements
 VectorFloat gravity; // [x, y, z]			gravity vector
 float euler[3];      // [psi, theta, phi]	Euler angle container
 float ypr[3];        // [yaw, pitch, roll]	yaw/pitch/roll container and gravity vector
 
-// packet structure for InvenSense teapot demo
-uint8_t teapotPacket[14] = {'$', 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x00, '\r', '\n'};
-
-// display quaternion values in easy matrix form: w x y z
-void getQuaternion()
-{
-    mpu.dmpGetQuaternion(&q, fifoBuffer);
-    printf("quat x:%6.2f y:%6.2f z:%6.2f w:%6.2f\n", q.x, q.y, q.z, q.w);
-}
-
-// display Euler angles in degrees
-void getEuler()
-{
-    mpu.dmpGetQuaternion(&q, fifoBuffer);
-    mpu.dmpGetEuler(euler, &q);
-    printf("euler psi:%6.2f theta:%6.2f phi:%6.2f\n", euler[0] * RAD_TO_DEG, euler[1] * RAD_TO_DEG, euler[2] * RAD_TO_DEG);
-}
-
-// display Euler angles in degrees
-void getYawPitchRoll()
-{
-    mpu.dmpGetQuaternion(&q, fifoBuffer);
-    mpu.dmpGetGravity(&gravity, &q);
-    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-#if 0
-	float _roll = ypr[2] * RAD_TO_DEG;
-	float _pitch = ypr[1] * RAD_TO_DEG;
-	float _yaw = ypr[0] * RAD_TO_DEG;
-	ESP_LOGI(TAG, "roll:%f pitch:%f yaw:%f",_roll, _pitch, _yaw);
-#endif
-    // printf("ypr roll:%3.1f pitch:%3.1f yaw:%3.1f\n",ypr[2] * RAD_TO_DEG, ypr[1] * RAD_TO_DEG, ypr[0] * RAD_TO_DEG);
-    ESP_LOGI(TAG, "roll:%f pitch:%f yaw:%f", ypr[2] * RAD_TO_DEG, ypr[1] * RAD_TO_DEG, ypr[0] * RAD_TO_DEG);
-}
-
-// display real acceleration, adjusted to remove gravity
-void getRealAccel()
-{
-    mpu.dmpGetQuaternion(&q, fifoBuffer);
-    mpu.dmpGetAccel(&aa, fifoBuffer);
-    mpu.dmpGetGravity(&gravity, &q);
-    mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-    printf("areal x=%d y:%d z:%d\n", aaReal.x, aaReal.y, aaReal.z);
-}
-
-// display initial world-frame acceleration, adjusted to remove gravity
-// and rotated based on known orientation from quaternion
-void getWorldAccel()
-{
-    mpu.dmpGetQuaternion(&q, fifoBuffer);
-    mpu.dmpGetAccel(&aa, fifoBuffer);
-    mpu.dmpGetGravity(&gravity, &q);
-    mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-    mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-    printf("aworld x:%d y:%d z:%d\n", aaWorld.x, aaWorld.y, aaWorld.z);
-}
-
 void Application::mqtt_trans(void *pvParameters)
 {
     ESP_LOGI(TAG, "mqtt Start");
     auto &mqtt = MQTTManager::getInstance();
-    POSE_a pose;
+    POSE_a_g pose;
     char payload[120];
     while (1)
     {
@@ -121,22 +66,16 @@ void Application::mqtt_trans(void *pvParameters)
             // ESP_LOGI(TAG, "pose=%d %d %d", pose.ax, pose.ay, pose.az);
             int len;
             len = snprintf(payload, sizeof(payload),
-                           "{\"seq\":%u,\"dt\":%f,\"x\":%d,\"y\":%d,\"z\":%d}",
+                           "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d}",
                            (unsigned)pose.seq,
-                           pose.dt,
                            pose.ax,
                            pose.ay,
-                           pose.az);
+                           pose.az,
+                           pose.gx,
+                           pose.gy,
+                           pose.gz);
             mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
-            // sprintf(buffer, "y168.8099yp12.7914pr-11.8401r");
-            // int buflen = sprintf(buffer, "y%fyp%fpr%fr", pose.yaw, pose.pitch, pose.roll);
-            // ret = lwip_sendto(fd, buffer, buflen, 0, (struct sockaddr *)&addr, sizeof(addr));
-            // LWIP_ASSERT("ret == buflen", ret == buflen);
-            // ESP_LOGD(TAG, "lwip_sendto ret=%d", ret);
         }
-
-        // printf("mqtt_trans\n");
-        // vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -153,6 +92,7 @@ void Application::mpu6050(void *pvParameters)
 
     // Initialize DMP
     devStatus = mpu.dmpInitialize();
+
     ESP_LOGI(TAG, "devStatus=%d", devStatus);
     if (devStatus != 0)
     {
@@ -165,12 +105,12 @@ void Application::mpu6050(void *pvParameters)
 
     // This need to be setup individually
     // supply your own gyro offsets here, scaled for min sensitivity
-    mpu.setXAccelOffset(7188);
-    mpu.setYAccelOffset(6404);
-    mpu.setZAccelOffset(8664);
-    mpu.setXGyroOffset(-88);
-    mpu.setYGyroOffset(68);
-    mpu.setZGyroOffset(20);
+    // mpu.setXAccelOffset(7188);
+    // mpu.setYAccelOffset(6404);
+    // mpu.setZAccelOffset(8664);
+    // mpu.setXGyroOffset(-88);
+    // mpu.setYGyroOffset(68);
+    // mpu.setZGyroOffset(20);
 
     // Calibration Time: generate offsets and calibrate our MPU6050
     mpu.CalibrateAccel(6);
@@ -186,7 +126,6 @@ void Application::mpu6050(void *pvParameters)
         {
             seq = 0;
             gpio_set_level(LED_GPIO, 1);
-            TickType_t last_wake_time = xTaskGetTickCount(); // 用于计算时间间隔
             ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
             mqtt.publish("/device/start", "", 0, 0, 0);
             while (gpio_get_level(BUTTON_GPIO) == 0)
@@ -197,13 +136,8 @@ void Application::mpu6050(void *pvParameters)
                     // float _pitch = ypr[1] * RAD_TO_DEG;
                     // float _yaw = ypr[0] * RAD_TO_DEG;
                     gpio_set_level(LED_GPIO, 1);
-                    TickType_t current_time = xTaskGetTickCount();
-                    float dt = (float)(current_time - last_wake_time) * portTICK_PERIOD_MS;
-                    last_wake_time = current_time;
                     // Get the Latest packet
-                    // getYawPitchRoll();
-                    int len;
-                    // len = snprintf(payload, sizeof(payload),
+                    // getYawPitchRoll();                    // len = snprintf(payload, sizeof(payload),
                     //                "{\"seq\":%u,\"time\":%f,\"_roll\":%.4f,\"_pitch\":%.4f,\"_yaw\":%.4f}",
                     //                (unsigned)seq,
                     //                dt,
@@ -211,14 +145,20 @@ void Application::mpu6050(void *pvParameters)
                     //                _pitch,
                     //                _yaw);
                     // ESP_LOGI(TAG, "%s", payload);
-                    getWorldAccel();
-
-                    POSE_a pose;
+                    // getWorldAccel();
+                    int16_t ax, ay, az, gx, gy, gz;
+                    // mpu.getAcceleration(&ax, &ay, &az);
+                    // mpu.getRotation(&gx, &gy, &gz);
+                    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+                    POSE_a_g pose;
                     pose.seq = seq;
-                    pose.dt = dt;
-                    pose.ax = aaWorld.x;
-                    pose.ay = aaWorld.y;
-                    pose.az = aaWorld.z;
+                    pose.ax = ax;
+                    pose.ay = ay;
+                    pose.az = az;
+                    pose.gx = gx;
+                    pose.gy = gy;
+                    pose.gz = gz;
+
                     if (xQueueSend(xQueueTrans, &pose, 100) != pdPASS)
                     {
                         ESP_LOGE(TAG, "xQueueSend fail");

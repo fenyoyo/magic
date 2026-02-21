@@ -4,10 +4,9 @@ import csv
 import os
 from datetime import datetime
 import  visualize_gyro_data
-import  acceleration_visualizer
 
 
-command = 'triangle'
+command = 'test'
 
 class GyroDataCollector:
     def __init__(self, csv_filename='gyro_data.csv'):
@@ -15,19 +14,39 @@ class GyroDataCollector:
         self.is_recording = False
         self.record_count = 0
         self.current_session_file = None
+        self.fieldnames = []  # 动态字段列表
 
     def start_recording(self):
         """开始记录数据"""
         if not self.is_recording:
-            # 生成带时间戳的文件名
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            self.csv_filename = f'{command}/gyro_data_{timestamp}.csv'
+            # 生成带序号的文件名
+            # 查找当前目录下已有的文件数量，用于生成下一个序号
+            dataset_dir = f'dataset/{command}'
+            os.makedirs(dataset_dir, exist_ok=True)
+            
+            # 获取当前目录下所有example_*.csv文件
+            import glob
+            existing_files = glob.glob(os.path.join(dataset_dir, 'example_*.csv'))
+            # 提取数字序号并找到最大值
+            max_num = 0
+            for file in existing_files:
+                try:
+                    filename = os.path.basename(file)
+                    num_str = filename.replace('example_', '').replace('.csv', '')
+                    if num_str.isdigit():
+                        num = int(num_str)
+                        if num > max_num:
+                            max_num = num
+                except:
+                    continue
+            
+            # 使用下一个序号
+            next_num = max_num + 1
+            self.csv_filename = f'{dataset_dir}/example_{next_num:03d}.csv'
 
-            # 初始化新的CSV文件
-            with open(self.csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['dt', 'seq', 'x', 'y', 'z']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
+            # 初始化新的CSV文件，但不写入表头直到第一次数据到达
+            # 准备目录
+            os.makedirs(os.path.dirname(self.csv_filename), exist_ok=True)
 
             self.is_recording = True
             self.record_count = 0
@@ -43,8 +62,8 @@ class GyroDataCollector:
             print(f"本次记录数据条数: {self.record_count}")
             print(f"保存文件: {self.csv_filename}")
             print("=" * 30)
-            # visualize_gyro_data.visualize_gyro_data(self.csv_filename)
-            acceleration_visualizer.show(self.csv_filename)
+            visualize_gyro_data.visualize_gyro_data(self.csv_filename)
+            # acceleration_visualizer.show(self.csv_filename)
 
     def save_data(self, data):
         """保存单条数据"""
@@ -52,22 +71,33 @@ class GyroDataCollector:
             return False
 
         try:
-            # 确保数据字典包含所有必需的字段
-            # row_data = {
-            #     'dt': data.get('dt', 0),
-            #     'seq': data.get('seq', 0),
-            #     'x': data.get('x', 0),
-            #     'y': data.get('y', 0),
-            #     'z': data.get('z', 0)
-            # }
-
-            # 写入CSV文件
+            # 如果是第一条数据，初始化CSV文件并写入表头
+            file_exists = os.path.exists(self.csv_filename)
             with open(self.csv_filename, 'a', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['dt', 'seq', 'x', 'y', 'z']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writerow(data)
+                # 获取数据的所有键作为字段名
+                if not file_exists:
+                    # 第一次写入，写入表头
+                    self.fieldnames = list(data.keys())
+                    writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames)
+                    writer.writeheader()
+                else:
+                    # 检查是否需要添加新字段
+                    new_fields = [key for key in data.keys() if key not in self.fieldnames]
+                    if new_fields:
+                        # 需要扩展CSV文件结构，这比较复杂，我们保持原有字段不变
+                        # 或者我们可以重新组织现有CSV文件以包含新字段
+                        print(f"发现新字段: {new_fields}，将使用现有字段结构继续记录")
+                    
+                    # 使用现有的字段名进行写入
+                    writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames)
+                
+                # 只写入存在于当前fieldnames中的字段值
+                filtered_data = {k: v for k, v in data.items() if k in self.fieldnames}
+                writer.writerow(filtered_data)
+                
             self.record_count += 1
-            print(f"✓ 记录数据 #{self.record_count} (seq: {data.get('seq', 'N/A')})")
+            seq_value = data.get('seq', data.get('sequence', 'N/A'))
+            print(f"✓ 记录数据 #{self.record_count} (seq: {seq_value})")
             return True
 
         except Exception as e:
@@ -114,15 +144,15 @@ def on_message(client, userdata, msg):
 
             # 解析JSON格式的消息
             payload = json.loads(msg.payload.decode('utf-8'))
-            
+
             # 处理不同格式的数据：如果接收的是"time"字段，则将其转换为"dt"
             if 'time' in payload and 'dt' not in payload:
                 payload['dt'] = payload['time']
-            
-            # 显示消息内容
+
+            # 显示消息内容 - 显示所有字段而不是固定的几个
             print(f"\n[{timestamp}] 收到陀螺仪数据:")
-            print(f"  数据: seq={payload.get('seq')}",
-                  f"dt={payload.get('dt')}, x={payload.get('x')}, y={payload.get('y')}, z={payload.get('z')}")
+            fields_info = ", ".join([f"{k}={v}" for k, v in payload.items()])
+            print(f"  数据: {fields_info}")
 
             # 只有在记录状态下才保存数据
             if collector.is_recording:

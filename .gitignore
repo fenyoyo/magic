@@ -86,3 +86,4 @@ cmake-build-debug/
 /model/*.pkl
 /model/*.png
 /model/triangle
+/model/output

@@ -16,7 +16,7 @@ def load_gyro_data(file_path):
     """
     df = pd.read_csv(file_path)
     # 使用陀螺仪数据列: gx, gy, gz, ax, ay, az
-    columns_to_use = ['gx', 'gy', 'gz', 'ax', 'ay', 'az']
+    columns_to_use = [ 'ax', 'ay', 'az','gx', 'gy', 'gz']
     # 确保这些列存在
     available_columns = [col for col in columns_to_use if col in df.columns]
     if len(available_columns) < 6:
@@ -46,40 +46,41 @@ def prepare_data(data_dir, max_seq_length=250):
     """
     准备训练数据
     """
-    # 获取所有CSV文件
-    csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
+    # 获取所有子目录（如triangle, circle等）
+    shape_dirs = [d for d in os.listdir(data_dir) 
+                  if os.path.isdir(os.path.join(data_dir, d))]
     
-    # 根据文件名确定标签
+    # 根据目录名确定标签
+    shape_labels = {}
+    for idx, shape_dir in enumerate(shape_dirs):
+        shape_labels[shape_dir] = idx
+    
+    print(f"发现形状类别: {shape_labels}")
+    
     X = []
     y = []
-    
-    for file_path in csv_files:
-        # 从文件名提取标签
-        filename = os.path.basename(file_path)
-        if filename.startswith('triangle'):
-            label = 0  # 三角形
-        elif filename.startswith('circle'):
-            label = 1  # 圆形
-        elif filename.startswith('square'):
-            label = 2  # 正方形
-        elif filename.startswith('random'):
-            label = 3  # 随机
-        else:
-            continue  # 跳过未知类型
+
+    for shape_dir, label in shape_labels.items():
+        shape_path = os.path.join(data_dir, shape_dir)
+        # 获取该目录下的所有CSV文件
+        csv_files = glob.glob(os.path.join(shape_path, "*.csv"))
         
-        try:
-            data = load_gyro_data(file_path)
-            # 预处理数据
-            processed_data = pad_or_truncate_sequence(data, max_seq_length)
-            X.append(processed_data)
-            y.append(label)
-        except Exception as e:
-            print(f"处理文件 {file_path} 时出错: {e}")
-            continue
-    
+        for file_path in csv_files:
+            try:
+                data = load_gyro_data(file_path)
+                # 预处理数据
+                processed_data = pad_or_truncate_sequence(data, max_seq_length)
+                X.append(processed_data)
+                y.append(label)
+                
+                print(f"加载文件: {file_path}, 标签: {label}")
+            except Exception as e:
+                print(f"处理文件 {file_path} 时出错: {e}")
+                continue
+
     X = np.array(X)
     y = np.array(y)
-    
+
     return X, y
 
 
@@ -160,42 +161,52 @@ def augment_data(X, y, augmentation_factor=2):
 
 def main():
     print("开始准备数据...")
-    
+
     # 准备数据
-    X, y = prepare_data('data', max_seq_length=250)
-    
+    # 修改数据目录以匹配实际数据位置
+    data_dir = 'dataset'  # 数据集在model/dataset目录下
+    X, y = prepare_data(data_dir, max_seq_length=250)
+
     print(f"原始数据形状: X={X.shape}, y={y.shape}")
     print(f"原始类别分布: {np.bincount(y)}")
-    
+
+    if len(np.unique(y)) == 0:
+        print("错误: 没有找到任何数据")
+        return
+    elif len(np.unique(y)) == 1:
+        print("警告: 只有一个类别，无法进行分类训练")
+        return
+
     # 数据增强
     print("进行数据增强...")
     X, y = augment_data(X, y, augmentation_factor=3)
     print(f"增强后数据形状: X={X.shape}, y={y.shape}")
     print(f"增强后类别分布: {np.bincount(y)}")
-    
+
     # 划分训练集和测试集
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
-    
+
     # 标准化数据
     # 将3D数组重塑为2D以进行标准化
     X_train_flat = X_train.reshape(-1, X_train.shape[-1])
     X_test_flat = X_test.reshape(-1, X_test.shape[-1])
-    
+
     scaler = StandardScaler()
     X_train_flat = scaler.fit_transform(X_train_flat)
     X_test_flat = scaler.transform(X_test_flat)
-    
+
     # 重新整形回3D
     X_train = X_train_flat.reshape(X_train.shape)
     X_test = X_test_flat.reshape(X_test.shape)
-    
+
     print("数据预处理完成")
-    
-    # 创建模型
+
+    # 创建模型 - 自动检测类别数量
     input_shape = (X_train.shape[1], X_train.shape[2])  # (sequence_length, features)
-    model = create_enhanced_model(input_shape, num_classes=4)
+    num_classes = len(np.unique(y))  # 自动检测类别数量
+    model = create_enhanced_model(input_shape, num_classes=num_classes)
     
     # 编译模型
     model.compile(
