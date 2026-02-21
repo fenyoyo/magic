@@ -65,7 +65,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.Flatten(),
 
     tf.keras.layers.Dense(64,activation='relu'),
-    tf.keras.layers.Dense(len(label_map),activation='softmax')
+    tf.keras.layers.Dense(len(label_map),activation='softmax')  # 包含所有已知类别
 ])
 
 model.compile(
@@ -78,56 +78,12 @@ model.summary()
 
 model.fit(X_train,y_train,epochs=30,validation_data=(X_test,y_test))
 
-# 评估模型
-print("评估最终模型...")
-test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
-print(f"\n最终测试准确率: {test_accuracy:.4f}")
+# 保存模型和预处理器
+model.save('./output/model.h5')
+np.save('./output/scaler_mean.npy', scaler.mean_)
+np.save('./output/scaler_scale.npy', scaler.scale_)
+with open('./output/label_map.txt', 'w') as f:
+    for label, idx in label_map.items():
+        f.write(f"{label}:{idx}\n")
 
-
-def predict_from_csv(model, scaler, label_map, csv_path, time_steps=100):
-    """
-    从新的CSV文件预测
-    """
-    # 读取CSV
-    df = pd.read_csv(csv_path)
-
-    # 提取需要的列
-    data = df[['ax', 'ay', 'az', 'gx', 'gy', 'gz']].values
-
-    # 预处理：截断或填充
-    if len(data) >= time_steps:
-        data = data[:time_steps]
-    else:
-        pad = np.zeros((time_steps - len(data), 6))
-        data = np.vstack((data, pad))
-
-    # 标准化
-    data_scaled = scaler.transform(data)
-
-    # 重塑为模型输入格式
-    data_reshaped = data_scaled.reshape(1, time_steps, 6)
-
-    # 预测
-    predictions = model.predict(data_reshaped, verbose=0)
-    predicted_class = np.argmax(predictions[0])
-    confidence = np.max(predictions[0])
-
-    # 获取标签名
-    label_names = list(label_map.keys())
-    label_values = list(label_map.values())
-    predicted_label = label_names[label_values.index(predicted_class)]
-
-    # 显示所有类别的概率
-    print("\n所有类别概率:")
-    for i, prob in enumerate(predictions[0]):
-        label = label_names[label_values.index(i)]
-        print(f"  {label}: {prob:.4f}")
-
-    return predicted_label, confidence
-
-new_csv = "test/lightning_001.csv"
-
-if os.path.exists(new_csv):
-    label, confidence = predict_from_csv(model, scaler, label_map, new_csv)
-    print(f"\n预测结果: {label}")
-    print(f"置信度: {confidence:.4f}")
+print("模型和预处理器已保存完成！")
