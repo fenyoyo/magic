@@ -58,13 +58,16 @@ model = tf.keras.Sequential([
 
     tf.keras.layers.Conv1D(16,5,activation='relu'),
     tf.keras.layers.MaxPooling1D(),
+    tf.keras.layers.Dropout(0.3),
 
     tf.keras.layers.Conv1D(32,3,activation='relu'),
     tf.keras.layers.MaxPooling1D(),
+    tf.keras.layers.Dropout(0.3),
 
     tf.keras.layers.Flatten(),
 
     tf.keras.layers.Dense(64,activation='relu'),
+    tf.keras.layers.Dropout(0.3),
     tf.keras.layers.Dense(len(label_map),activation='softmax')  # 包含所有已知类别
 ])
 

@@ -6,7 +6,7 @@ from datetime import datetime
 import  visualize_gyro_data
 
 
-command = 'circular'
+command = 'left'
 
 class GyroDataCollector:
     def __init__(self, csv_filename='gyro_data.csv'):
