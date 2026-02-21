@@ -5,6 +5,9 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from tensorflow import keras
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from time_normalization import time_normalize_sequence
 
 DATASET_PATH = "dataset"
 TIME_STEPS = 100
@@ -29,11 +32,8 @@ for label_name in os.listdir(DATASET_PATH):
 
         data = df[['ax','ay','az','gx','gy','gz']].values
 
-        if len(data) >= TIME_STEPS:
-            data = data[:TIME_STEPS]
-        else:
-            pad = np.zeros((TIME_STEPS-len(data),6))
-            data = np.vstack((data,pad))
+        # 使用线性插值进行时间归一化，不管动作多快多慢，都压缩/拉伸到固定长度
+        data = time_normalize_sequence(data, TIME_STEPS)
 
         X.append(data)
         y.append(label_index)

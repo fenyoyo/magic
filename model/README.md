@@ -1,66 +1,72 @@
-# TinyML 陀螺仪形状分类模型
+# 模型训练与测试指南
 
-## 概述
-这是一个基于TensorFlow Lite Micro的TinyML模型，用于对陀螺仪传感器数据进行形状分类。模型能够识别四种不同的手势形状：三角形、圆形、正方形和随机运动。
+## 1. 环境准备
 
-## 模型架构
-- **输入**: 时间序列数据，形状为 (batch_size, 250, 6)，其中6代表陀螺仪的6个轴 (gx, gy, gz, ax, ay, az)
-- **架构**: CNN-LSTM混合模型
-  - 卷积层用于提取局部特征
-  - LSTM层捕获长期依赖关系
-  - 全连接层进行最终分类
-- **输出**: 4个类别的概率分布 (三角形, 圆形, 正方形, 随机)
-
-## 训练数据
-- **数据源**: 陀螺仪传感器采集的手势数据
-- **数据格式**: CSV文件，包含列: `gx`, `gy`, `gz`, `ax`, `ay`, `az`
-- **类别**:
-  - Triangle (0)
-  - Circle (1) 
-  - Square (2)
-  - Random (3)
-
-## 训练过程
-1. 数据预处理和标准化
-2. 使用CNN提取空间特征
-3. 使用LSTM建模时间序列模式
-4. 全连接层进行分类
-
-## 模型优化
-- 使用INT8量化减小模型大小
-- 优化内存使用以适配微控制器
-
-## 部署说明
-模型被转换为C++头文件格式 (`gyro_model_data.h`)，可以直接在ESP32等微控制器上部署使用。
-
-### 模型转换
+### 安装依赖
 ```bash
-python model_to_cc_converter.py gyro_shape_classifier_enhanced.h5 gyro_model_data.h gyro_model
+pip install -r requirements.txt
 ```
 
-### ESP32端使用
-- `PredictShape()` 方法用于执行形状分类
-- 输入数据需要重新整形为模型期望的格式
-- 返回预测的类别和置信度
+## 2. 模型训练
 
-## 性能指标
-- **准确率**: >95% (根据测试集)
-- **模型大小**: 约XX KB (TFLite格式)
-- **推理时间**: 约XX ms (取决于硬件)
+### 基础训练
+```bash
+python training.py
+```
+此脚本会：
+- 从 dataset 目录读取训练数据
+- 训练CNN模型
+- 保存模型为 model.h5
+- 保存预处理器为 scaler_mean.npy 和 scaler_scale.npy
+- 保存标签映射为 label_map.txt
 
-## 文件结构
-- `tinyml_gyro_classifier_enhanced.py`: 模型训练代码
-- `evaluate_enhanced_model.py`: 模型评估代码
-- `model_to_cc_converter.py`: 模型转换工具
-- `visualize_gyro_data.py`: 数据可视化工具
-- `gyro_shape_classifier_enhanced.h5`: 训练好的Keras模型
-- `gyro_shape_classifier_enhanced.tflite`: TensorFlow Lite模型
-- `gyro_model_data.h`: C++头文件格式模型
-- `scaler_enhanced.pkl`: 特征标准化器
-- `training_history_enhanced.png`: 训练历史图表
+### 增强训练（推荐）
+```bash
+python enhanced_training.py
+```
+此脚本在基础训练基础上增加了：
+- "未知"类别样本
+- Dropout层防过拟合
 
-## ESP32端接口
-在ESP32端，使用`GyroPredictor`类来执行推理：
-- `Init()`: 初始化模型
-- `PredictShape()`: 执行形状分类
-- `GetInputSize()/GetOutputSize()`: 获取张量尺寸信息
+## 3. 模型测试
+
+### 基础测试
+```bash
+python test_model.py
+```
+使用置信度阈值过滤低质量预测
+
+### 高级测试（推荐）
+```bash
+python advanced_test.py
+```
+使用置信度和预测熵双重判断未知样本
+
+## 4. 处理高置信度误分类问题
+
+对于像 `none_001.csv` 这样的文件，虽然被错误分类但置信度很高，可以采用以下方法：
+
+### 方法1：置信度阈值
+在 `test_model.py` 中设置 `CONFIDENCE_THRESHOLD` 参数，
+当预测置信度低于该值时，将样本标记为 "unknown"
+
+### 方法2：预测熵分析
+在 `advanced_test.py` 中同时考虑：
+- 预测置信度：最高概率值
+- 预测熵：衡量预测分布的均匀性
+当预测熵较高时，表示模型对各个类别的预测比较平均，不太确定
+
+### 方法3：引入未知类别
+在训练阶段添加"未知"类别样本，让模型学会区分已知和未知模式
+
+## 5. 调整建议
+
+针对 `none_001.csv` 被错误分类为 `triangle` 的问题：
+
+1. 在 `advanced_test.py` 中调整阈值：
+   - 降低 `CONFIDENCE_THRESHOLD` (默认0.7)
+   - 降低 `ENTROPY_THRESHOLD` (默认0.4)
+
+2. 收集更多"无手势"样本加入训练集
+
+3. 使用增强训练脚本 `enhanced_training.py`

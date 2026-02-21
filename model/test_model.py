@@ -4,6 +4,9 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 from tensorflow import keras
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from time_normalization import time_normalize_sequence
 
 def load_model_and_preprocessor(model_path='./output/model.h5', scaler_mean_path='./output/scaler_mean.npy',
                                scaler_scale_path='./output/scaler_scale.npy', label_map_path='./output/label_map.txt'):
@@ -37,11 +40,8 @@ def preprocess_single_sample(file_path, scaler, time_steps=100):
     df = pd.read_csv(file_path)
     data = df[['ax','ay','az','gx','gy','gz']].values
 
-    if len(data) >= time_steps:
-        data = data[:time_steps]
-    else:
-        pad = np.zeros((time_steps-len(data), 6))
-        data = np.vstack((data, pad))
+    # 使用线性插值进行时间归一化，不管动作多快多慢，都压缩/拉伸到固定长度
+    data = time_normalize_sequence(data, time_steps)
 
     # 应用标准化
     data_reshaped = data.reshape(-1, 6)
@@ -50,7 +50,7 @@ def preprocess_single_sample(file_path, scaler, time_steps=100):
     
     return data_final
 
-def test_single_file(model, scaler, label_map, file_path):
+def test_single_file(model, scaler, label_map, file_path, confidence_threshold=0.8):
     """
     测试单个文件
     """
@@ -59,18 +59,25 @@ def test_single_file(model, scaler, label_map, file_path):
     predicted_class_idx = np.argmax(prediction, axis=1)[0]
     confidence = np.max(prediction)
     
-    predicted_label = label_map[predicted_class_idx]
+    # 检查置信度阈值
+    if confidence < confidence_threshold:
+        predicted_label = "unknown"
+        print(f"文件: {os.path.basename(file_path)}")
+        print(f"预测类别: {predicted_label} (低于置信度阈值)")
+        print(f"最高置信度: {confidence:.4f}")
+        print(f"预测概率分布: {prediction[0]}")
+    else:
+        predicted_label = label_map[predicted_class_idx]
+        print(f"文件: {os.path.basename(file_path)}")
+        print(f"预测类别: {predicted_label}")
+        print(f"置信度: {confidence:.4f}")
+        print(f"预测概率分布: {prediction[0]}")
     
-    filename = os.path.basename(file_path)
-    print(f"文件: {filename}")
-    print(f"预测类别: {predicted_label}")
-    print(f"置信度: {confidence:.4f}")
-    print(f"预测概率分布: {prediction[0]}")
     print("-" * 50)
     
     return predicted_label, confidence
 
-def test_all_files_in_directory(model, scaler, label_map, test_dir='test'):
+def test_all_files_in_directory(model, scaler, label_map, test_dir='test', confidence_threshold=0.8):
     """
     测试目录下所有CSV文件
     """
@@ -85,7 +92,7 @@ def test_all_files_in_directory(model, scaler, label_map, test_dir='test'):
     
     for file in test_files:
         file_path = os.path.join(test_dir, file)
-        test_single_file(model, scaler, label_map, file_path)
+        test_single_file(model, scaler, label_map, file_path, confidence_threshold)
 
 if __name__ == "__main__":
     # 加载模型和预处理器
@@ -96,5 +103,8 @@ if __name__ == "__main__":
     print(f"标签映射: {label_map}")
     print("=" * 50)
     
+    # 设置置信度阈值，可以根据实际情况调整
+    CONFIDENCE_THRESHOLD = 0.8  # 将阈值设为80%
+    
     # 测试 test 目录下的所有文件
-    test_all_files_in_directory(model, scaler, label_map, 'test')
+    test_all_files_in_directory(model, scaler, label_map, 'test', CONFIDENCE_THRESHOLD)

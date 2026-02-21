@@ -67,5 +67,9 @@ def visualize_gyro_data(file_path):
 
 if __name__ == "__main__":
     # 使用提供的数据文件路径
-    file_path = 'triangle/gyro_data_20260221_153858.csv'
+    file_path = 'test/none_001.csv'
+    visualize_gyro_data(file_path)
+    file_path = 'test/circular _001.csv'
+    visualize_gyro_data(file_path)
+    file_path = 'test/lightning_001.csv'
     visualize_gyro_data(file_path)
