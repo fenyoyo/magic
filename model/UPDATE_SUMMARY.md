@@ -31,3 +31,9 @@
 - 在Conv1D层后添加Dropout(0.3)
 - 在Dense层后添加Dropout(0.3)
 - 提高模型鲁棒性
+
+### 数据可视化对比
+- 新增compare_original_and_normalized函数
+- 对比原始数据和归一化数据的可视化
+- 提供统计信息对比
+- 支持中英文版本
