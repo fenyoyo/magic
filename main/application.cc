@@ -133,22 +133,22 @@ void Application::oled_trans(void *pvParameters)
                 ssd1306_draw_string(ssd1306_dev, 10, 0, (const uint8_t *)title_str, 16, 1);
 
                 // 显示加速度数据 (ax, ay, az) - 分两行显示，节省空间
-                snprintf(buffer, sizeof(buffer), "A:%d,%d", pose.ax, pose.ay);
-                ssd1306_draw_string(ssd1306_dev, 0, 20, (const uint8_t *)buffer, 12, 1);
+                snprintf(buffer, sizeof(buffer), "X:%d,Y:%d", pose.ax, pose.ay);
+                ssd1306_draw_string(ssd1306_dev, 0, 20, (const uint8_t *)buffer, 16, 1);
 
                 snprintf(buffer, sizeof(buffer), "Z:%d", pose.az);
-                ssd1306_draw_string(ssd1306_dev, 0, 35, (const uint8_t *)buffer, 12, 1);
+                ssd1306_draw_string(ssd1306_dev, 0, 38, (const uint8_t *)buffer, 16, 1);
 
-                // 显示陀螺仪数据 (gx, gy, gz) - 分两行显示
-                snprintf(buffer, sizeof(buffer), "G:%d,%d", pose.gx, pose.gy);
-                ssd1306_draw_string(ssd1306_dev, 0, 50, (const uint8_t *)buffer, 12, 1);
+                // // 显示陀螺仪数据 (gx, gy, gz) - 分两行显示
+                // snprintf(buffer, sizeof(buffer), "G:%d,%d", pose.gx, pose.gy);
+                // ssd1306_draw_string(ssd1306_dev, 0, 56, (const uint8_t *)buffer, 16, 1);
 
-                snprintf(buffer, sizeof(buffer), "Z:%d", pose.gz);
-                ssd1306_draw_string(ssd1306_dev, 64, 50, (const uint8_t *)buffer, 12, 1);
+                // snprintf(buffer, sizeof(buffer), "Z:%d", pose.gz);
+                // ssd1306_draw_string(ssd1306_dev, 64, 50, (const uint8_t *)buffer, 16, 1);
 
-                // 显示序列号
-                snprintf(buffer, sizeof(buffer), "#%u", pose.seq);
-                ssd1306_draw_string(ssd1306_dev, 110, 0, (const uint8_t *)buffer, 8, 1);
+                // // 显示序列号
+                // snprintf(buffer, sizeof(buffer), "#%u", pose.seq);
+                // ssd1306_draw_string(ssd1306_dev, 110, 0, (const uint8_t *)buffer, 8, 1);
 
                 // 刷新显示
                 ssd1306_refresh_gram(ssd1306_dev);
@@ -170,7 +170,7 @@ void Application::oled_trans(void *pvParameters)
                 {
                     ssd1306_clear_screen(ssd1306_dev, 0x00);
                     ssd1306_draw_string(ssd1306_dev, 10, 0, (const uint8_t *)"GYRO DATA", 16, 1);
-                    ssd1306_draw_string(ssd1306_dev, 15, 35, (const uint8_t *)"WAITING...", 12, 1);
+                    ssd1306_draw_string(ssd1306_dev, 15, 35, (const uint8_t *)"WAITING...", 16, 1);
                     ssd1306_refresh_gram(ssd1306_dev);
                 }
                 vTaskDelay(pdMS_TO_TICKS(100)); // 等待状态下稍微延长延迟
