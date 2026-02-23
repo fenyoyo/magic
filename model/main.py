@@ -6,7 +6,13 @@ from datetime import datetime
 import  visualize_gyro_data
 
 
-command = 'left'
+# command = 'circular'
+# command = 'left'
+# command = 'right'
+# command = 'lightning'
+# command = 'triangle'
+# command = 'up'
+command = 'down'
 
 class GyroDataCollector:
     def __init__(self, csv_filename='gyro_data.csv'):

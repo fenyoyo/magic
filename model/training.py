@@ -4,6 +4,7 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow import keras
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -43,24 +44,29 @@ for label_name in os.listdir(DATASET_PATH):
 X = np.array(X)
 y = np.array(y)
 
-# 归一化
-scaler = StandardScaler()
-X_reshaped = X.reshape(-1,6)
-X_scaled = scaler.fit_transform(X_reshaped)
-X = X_scaled.reshape(-1,TIME_STEPS,6)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y
+)
 
-# 划分数据
-X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.2)
+scaler = StandardScaler()
+
+# 只用训练集 fit
+X_train_reshaped = X_train.reshape(-1,6)
+scaler.fit(X_train_reshaped)
+
+# 分别 transform
+X_train = scaler.transform(X_train_reshaped).reshape(-1,TIME_STEPS,6)
+X_test = scaler.transform(X_test.reshape(-1,6)).reshape(-1,TIME_STEPS,6)
 
 # 建立模型
 model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(TIME_STEPS,6)),
 
-    tf.keras.layers.Conv1D(16,5,activation='relu'),
+    tf.keras.layers.Conv1D(8,5,activation='relu'),
     tf.keras.layers.MaxPooling1D(),
     tf.keras.layers.Dropout(0.3),
 
-    tf.keras.layers.Conv1D(32,3,activation='relu'),
+    tf.keras.layers.Conv1D(16,3,activation='relu'),
     tf.keras.layers.MaxPooling1D(),
     tf.keras.layers.Dropout(0.3),
 
@@ -78,8 +84,13 @@ model.compile(
 )
 
 model.summary()
+early_stop = EarlyStopping(
+    monitor='val_loss',
+    patience=5,
+    restore_best_weights=True
+)
 
-model.fit(X_train,y_train,epochs=30,validation_data=(X_test,y_test))
+model.fit(X_train,y_train,epochs=30,validation_data=(X_test,y_test),callbacks=[early_stop])
 
 # 保存模型和预处理器
 model.save('./output/model.h5')
