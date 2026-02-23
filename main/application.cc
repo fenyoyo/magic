@@ -21,6 +21,8 @@
 // #include "MPU6050.h" // not necessary if using MotionApps include file
 #include "MPU6050_6Axis_MotionApps20.h"
 
+#include "ssd1306.h"
+
 #define TAG "Application"
 
 #define GYRO_STREAM_MS 20
@@ -32,6 +34,11 @@
 
 #define RAD_TO_DEG (180.0 / M_PI)
 #define DEG_TO_RAD 0.0174533
+
+#define I2C_MASTER_SCL_IO 17      /*!< gpio number for I2C master clock */
+#define I2C_MASTER_SDA_IO 18      /*!< gpio number for I2C master data  */
+#define I2C_MASTER_NUM I2C_NUM_1  /*!< I2C port number for master dev */
+#define I2C_MASTER_FREQ_HZ 100000 /*!< I2C master clock frequency */
 
 MPU6050 mpu;
 
@@ -77,6 +84,100 @@ void Application::mqtt_trans(void *pvParameters)
             mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
         }
     }
+    vTaskDelete(NULL);
+}
+
+// 静态函数用于OLED显示任务
+void Application::oled_trans(void *pvParameters)
+{
+    ESP_LOGI(TAG, "OLED Display Task Started");
+
+    // 等待OLED初始化完成
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // 确保SSD1306设备已初始化
+    if (ssd1306_dev == NULL)
+    {
+        ESP_LOGE(TAG, "SSD1306 device not initialized, exiting task");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // 初始化OLED显示
+    ssd1306_refresh_gram(ssd1306_dev);
+    ssd1306_clear_screen(ssd1306_dev, 0x00);
+
+    char title_str[20] = "GYRO DATA";
+    if (ssd1306_dev != NULL)
+    {
+        ssd1306_draw_string(ssd1306_dev, 10, 0, (const uint8_t *)title_str, 16, 1);
+        ssd1306_refresh_gram(ssd1306_dev);
+    }
+
+    POSE_a_g pose;
+    char buffer[64];
+    bool has_received_data = false; // 跟踪是否收到过数据
+
+    while (1)
+    {
+        if (xQueueReceive(xQueueTransOled, &pose, pdMS_TO_TICKS(50)) == pdTRUE)
+        { // 使用较短的超时时间，避免长时间阻塞
+            has_received_data = true;
+
+            // 清除屏幕特定区域用于显示数据
+            if (ssd1306_dev != NULL)
+            {
+                ssd1306_clear_screen(ssd1306_dev, 0x00); // 先清除整个屏幕再重新绘制
+
+                // 重新绘制标题
+                ssd1306_draw_string(ssd1306_dev, 10, 0, (const uint8_t *)title_str, 16, 1);
+
+                // 显示加速度数据 (ax, ay, az) - 分两行显示，节省空间
+                snprintf(buffer, sizeof(buffer), "A:%d,%d", pose.ax, pose.ay);
+                ssd1306_draw_string(ssd1306_dev, 0, 20, (const uint8_t *)buffer, 12, 1);
+
+                snprintf(buffer, sizeof(buffer), "Z:%d", pose.az);
+                ssd1306_draw_string(ssd1306_dev, 0, 35, (const uint8_t *)buffer, 12, 1);
+
+                // 显示陀螺仪数据 (gx, gy, gz) - 分两行显示
+                snprintf(buffer, sizeof(buffer), "G:%d,%d", pose.gx, pose.gy);
+                ssd1306_draw_string(ssd1306_dev, 0, 50, (const uint8_t *)buffer, 12, 1);
+
+                snprintf(buffer, sizeof(buffer), "Z:%d", pose.gz);
+                ssd1306_draw_string(ssd1306_dev, 64, 50, (const uint8_t *)buffer, 12, 1);
+
+                // 显示序列号
+                snprintf(buffer, sizeof(buffer), "#%u", pose.seq);
+                ssd1306_draw_string(ssd1306_dev, 110, 0, (const uint8_t *)buffer, 8, 1);
+
+                // 刷新显示
+                ssd1306_refresh_gram(ssd1306_dev);
+            }
+        }
+        else
+        {
+            // 如果队列为空但之前收到过数据，保持最后数据显示一段时间
+            if (has_received_data)
+            {
+                // 在这里可以选择保持最后一次数据显示而不清屏
+                // 或者添加一些动态效果表明正在等待新数据
+                vTaskDelay(pdMS_TO_TICKS(50)); // 短暂延迟，避免CPU占用过高
+            }
+            else
+            {
+                // 如果从未收到数据，显示等待信息
+                if (ssd1306_dev != NULL)
+                {
+                    ssd1306_clear_screen(ssd1306_dev, 0x00);
+                    ssd1306_draw_string(ssd1306_dev, 10, 0, (const uint8_t *)"GYRO DATA", 16, 1);
+                    ssd1306_draw_string(ssd1306_dev, 15, 35, (const uint8_t *)"WAITING...", 12, 1);
+                    ssd1306_refresh_gram(ssd1306_dev);
+                }
+                vTaskDelay(pdMS_TO_TICKS(100)); // 等待状态下稍微延长延迟
+            }
+        }
+    }
+
     vTaskDelete(NULL);
 }
 
@@ -160,6 +261,10 @@ void Application::mpu6050(void *pvParameters)
                     pose.gz = gz;
 
                     if (xQueueSend(xQueueTrans, &pose, 100) != pdPASS)
+                    {
+                        ESP_LOGE(TAG, "xQueueSend fail");
+                    }
+                    if (xQueueSend(xQueueTransOled, &pose, 100) != pdPASS)
                     {
                         ESP_LOGE(TAG, "xQueueSend fail");
                     }
@@ -302,6 +407,9 @@ void Application::onMQTTError(int error_type, void *error_data)
     }
 }
 QueueHandle_t Application::xQueueTrans = nullptr;
+QueueHandle_t Application::xQueueTransOled = nullptr;
+ssd1306_handle_t Application::ssd1306_dev = NULL;
+
 void Application::Start()
 {
     // printf("Application started\n");
@@ -331,7 +439,47 @@ void Application::Start()
     xQueueTrans = xQueueCreate(10, sizeof(POSE_a));
 
     configASSERT(xQueueTrans);
+
+    xQueueTransOled = xQueueCreate(10, sizeof(POSE_a));
+
+    configASSERT(xQueueTransOled);
     // Start imu task
     xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);
     xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL);
+
+    i2c_config_t conf;
+    conf.mode = I2C_MODE_MASTER;
+    conf.sda_io_num = (gpio_num_t)I2C_MASTER_SDA_IO;
+    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+    conf.scl_io_num = (gpio_num_t)I2C_MASTER_SCL_IO;
+    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+    conf.master.clk_speed = I2C_MASTER_FREQ_HZ;
+    conf.clk_flags = I2C_SCLK_SRC_FLAG_FOR_NOMAL;
+
+    i2c_param_config(I2C_MASTER_NUM, &conf);
+    i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
+
+    // 初始化SSD1306 OLED显示屏
+    ssd1306_dev = ssd1306_create(I2C_NUM_1, SSD1306_I2C_ADDRESS);
+    if (ssd1306_dev != NULL)
+    {
+        esp_err_t ret = ssd1306_init(ssd1306_dev);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to initialize SSD1306: %d", ret);
+            ssd1306_delete(ssd1306_dev);
+            ssd1306_dev = NULL;
+        }
+        else
+        {
+            ESP_LOGI(TAG, "SSD1306 initialized successfully");
+        }
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to create SSD1306 device handle");
+    }
+
+    // 启动OLED显示任务
+    xTaskCreate(&oled_trans, "OLED_DISPLAY", 1024 * 4, NULL, 4, NULL);
 }

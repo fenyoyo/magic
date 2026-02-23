@@ -7,4 +7,5 @@ dependencies:
     version: '*'
   espressif/esp-tflite-micro: '*'
   espressif/cjson:
-    version: "^1.7.0"
+    version: ^1.7.0
+  espressif/ssd1306: ^1.0.5~1

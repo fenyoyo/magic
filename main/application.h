@@ -4,7 +4,7 @@
 #include <string>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
+#include "ssd1306.h"
 class Application
 {
 private:
@@ -12,9 +12,12 @@ private:
     Application();
     ~Application();
     static QueueHandle_t xQueueTrans;
+    static QueueHandle_t xQueueTransOled;
+    static ssd1306_handle_t ssd1306_dev;
     bool m_mqtt_connected;
     static void mpu6050(void *arg);
     static void mqtt_trans(void *arg);
+    static void oled_trans(void *arg);
 
 public:
     static Application &getInstance()
