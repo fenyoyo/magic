@@ -10,19 +10,20 @@
 #include "wifi_manager.h"
 #include "driver/gpio.h"
 
-/** 按钮 GPIO：按下为低电平（接 GND），松开为高电平（内部上拉） */
-#define BUTTON_GPIO GPIO_NUM_4
-/** LED GPIO：按下按钮时亮，松开时灭 */
-#define LED_GPIO GPIO_NUM_5
-
 #define TAG "Board"
 Board::Board()
 {
     ESP_LOGI(TAG, "Board init");
+    m_oled = nullptr;
 }
 
 Board::~Board()
 {
+    if (m_oled)
+    {
+        delete m_oled;
+        m_oled = nullptr;
+    }
 }
 
 void Board::StartNetwork()
@@ -57,6 +58,13 @@ void Board::SetButton()
     io.intr_type = GPIO_INTR_DISABLE;
     gpio_config(&io);
 
+    io.pin_bit_mask = (1ULL << BUTTON_GPIO_R);
+    io.mode = GPIO_MODE_INPUT;
+    io.pull_up_en = GPIO_PULLUP_ENABLE;
+    io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&io);
+
     io.pin_bit_mask = (1ULL << LED_GPIO);
     io.mode = GPIO_MODE_OUTPUT;
     io.pull_up_en = GPIO_PULLUP_DISABLE;
@@ -64,4 +72,29 @@ void Board::SetButton()
     io.intr_type = GPIO_INTR_DISABLE;
     gpio_config(&io);
     gpio_set_level(LED_GPIO, 0);
+
+    io.pin_bit_mask = (1ULL << LED_GPIO_R);
+    io.mode = GPIO_MODE_OUTPUT;
+    io.pull_up_en = GPIO_PULLUP_DISABLE;
+    io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&io);
+    gpio_set_level(LED_GPIO_R, 0);
+}
+
+bool Board::initOLED()
+{
+    if (m_oled == nullptr)
+    {
+        m_oled = new OLED();
+        if (!m_oled->initialize())
+        {
+            ESP_LOGE(TAG, "Failed to initialize OLED");
+            delete m_oled;
+            m_oled = nullptr;
+            return false;
+        }
+        ESP_LOGI(TAG, "OLED initialized successfully");
+    }
+    return true;
 }

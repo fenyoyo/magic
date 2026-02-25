@@ -33,4 +33,11 @@ typedef struct
 	int16_t gx;
 	int16_t gy;
 	int16_t gz;
+	float qx;
+	float qy;
+	float qz;
+	float qw;
+	float roll;
+	float pitch;
+	float yaw;
 } POSE_a_g;

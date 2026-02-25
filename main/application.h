@@ -13,11 +13,9 @@ private:
     ~Application();
     static QueueHandle_t xQueueTrans;
     static QueueHandle_t xQueueTransOled;
-    static ssd1306_handle_t ssd1306_dev;
     bool m_mqtt_connected;
     static void mpu6050(void *arg);
     static void mqtt_trans(void *arg);
-    static void oled_trans(void *arg);
 
 public:
     static Application &getInstance()
@@ -33,6 +31,7 @@ public:
     void onMQTTMessage(const std::string &topic, const std::string &data, int &data_len);
     void onMQTTConnection(bool connected);
     void onMQTTError(int error_type, void *error_data);
+    
 };
 
 #endif // _APPLICATION_H_
