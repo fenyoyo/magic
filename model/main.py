@@ -9,10 +9,12 @@ import  visualize_gyro_data
 # command = 'circular'
 # command = 'left'
 # command = 'right'
-# command = 'lightning'
-# command = 'triangle'
 # command = 'up'
 command = 'down'
+# command = 'lightning'
+# command = 'triangle'
+# command = 'letter_c'
+
 
 class GyroDataCollector:
     def __init__(self, csv_filename='gyro_data.csv'):

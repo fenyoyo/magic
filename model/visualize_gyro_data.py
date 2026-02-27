@@ -67,6 +67,7 @@ def visualize_gyro_data(file_path):
     axes[1].grid(True, linestyle='--', alpha=0.3)
 
     plt.tight_layout()
+    plt.title(file_path)
     plt.show()
 
 

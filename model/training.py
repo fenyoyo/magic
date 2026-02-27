@@ -60,21 +60,33 @@ X_test = scaler.transform(X_test.reshape(-1,6)).reshape(-1,TIME_STEPS,6)
 
 # 建立模型
 model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(TIME_STEPS,6)),
+    # tf.keras.layers.Input(shape=(TIME_STEPS,6)),
+    #
+    # tf.keras.layers.Conv1D(8,5,activation='relu'),
+    # tf.keras.layers.MaxPooling1D(),
+    # tf.keras.layers.Dropout(0.3),
+    #
+    # tf.keras.layers.Conv1D(16,3,activation='relu'),
+    # tf.keras.layers.MaxPooling1D(),
+    # tf.keras.layers.Dropout(0.3),
+    #
+    # tf.keras.layers.Flatten(),
+    #
+    # tf.keras.layers.Dense(64,activation='relu'),
+    # tf.keras.layers.Dropout(0.3),
+    # tf.keras.layers.Dense(len(label_map),activation='softmax')  # 包含所有已知类别
 
-    tf.keras.layers.Conv1D(8,5,activation='relu'),
+    tf.keras.layers.Input(shape=(TIME_STEPS, 6)),
+
+    tf.keras.layers.Conv1D(16, 5, activation='relu'),
     tf.keras.layers.MaxPooling1D(),
-    tf.keras.layers.Dropout(0.3),
 
-    tf.keras.layers.Conv1D(16,3,activation='relu'),
-    tf.keras.layers.MaxPooling1D(),
-    tf.keras.layers.Dropout(0.3),
+    tf.keras.layers.Conv1D(32, 3, activation='relu'),
 
-    tf.keras.layers.Flatten(),
+    tf.keras.layers.GlobalAveragePooling1D(),
 
-    tf.keras.layers.Dense(64,activation='relu'),
-    tf.keras.layers.Dropout(0.3),
-    tf.keras.layers.Dense(len(label_map),activation='softmax')  # 包含所有已知类别
+    tf.keras.layers.Dense(32, activation='relu'),
+    tf.keras.layers.Dense(len(label_map), activation='softmax')
 ])
 
 model.compile(
@@ -92,12 +104,17 @@ early_stop = EarlyStopping(
 
 model.fit(X_train,y_train,epochs=30,validation_data=(X_test,y_test),callbacks=[early_stop])
 
-# 保存模型和预处理器
-model.save('./output/model.h5')
-np.save('./output/scaler_mean.npy', scaler.mean_)
-np.save('./output/scaler_scale.npy', scaler.scale_)
-with open('./output/label_map.txt', 'w') as f:
-    for label, idx in label_map.items():
-        f.write(f"{label}:{idx}\n")
+# 评估模型
+print("评估最终模型...")
+test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
+print(f"\n最终测试准确率: {test_accuracy:.4f}")
 
-print("模型和预处理器已保存完成！")
+# # 保存模型和预处理器
+# model.save('./output/model.h5')
+# np.save('./output/scaler_mean.npy', scaler.mean_)
+# np.save('./output/scaler_scale.npy', scaler.scale_)
+# with open('./output/label_map.txt', 'w') as f:
+#     for label, idx in label_map.items():
+#         f.write(f"{label}:{idx}\n")
+#
+# print("模型和预处理器已保存完成！")

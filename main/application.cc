@@ -341,10 +341,10 @@ void Application::Start()
     board.StartNetwork();
     board.SetButton();
     // 第二步启动mqtt
-    if (!board.initOLED())
-    {
-        ESP_LOGE(TAG, "Failed to initialize OLED via Board class");
-    }
+    // if (!board.initOLED())
+    // {
+    //     ESP_LOGE(TAG, "Failed to initialize OLED via Board class");
+    // }
     auto &mqtt = MQTTManager::getInstance();
 
     mqtt.setMessageCallback([this](const std::string &topic,
@@ -374,7 +374,7 @@ void Application::Start()
     // 启动OLED显示任务（现在由Board类管理）
     // 注意：实际的OLED任务现在在Board类中管理，这里不需要再创建
 
-    board.getOLED()->display_message("Hello, World!", 16);
+    // board.getOLED()->display_message("Hello, World!", 16);
     gpio_set_level(LED_GPIO_R, 0);
 
     // while (1)
