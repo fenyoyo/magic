@@ -152,6 +152,75 @@ def compare_original_and_normalized(file_path, target_length=100):
     print(f"原始数据 - 标准差: ax={np.std(original_data[:, 0]):.3f}, ay={np.std(original_data[:, 1]):.3f}, az={np.std(original_data[:, 2]):.3f}")
     print(f"归一化数据 - 标准差: ax={np.std(normalized_data[:, 0]):.3f}, ay={np.std(normalized_data[:, 1]):.3f}, az={np.std(normalized_data[:, 2]):.3f}")
 
+def wordShow(file_path):
+    # =============================
+    # 1. 读取数据
+    # =============================
+    data = pd.read_csv(file_path)
+
+    # t = data["timestamp"].values
+    ax = data["wx"].values
+    ay = data["wy"].values
+    az = data["wz"].values
+    print(ax)
+    # 转 float
+    a = np.vstack((ax, ay, az)).T.astype(np.float64)
+
+    dt = 0.02
+
+    # ========= 1. 去静态偏置 =========
+    bias = np.mean(a[:10], axis=0)  # 前10帧当静止
+    a = a - bias
+
+    # ========= 2. 滤波 =========
+    def moving_average(x, w=5):
+        return np.convolve(x, np.ones(w) / w, mode='same')
+
+    for i in range(3):
+        a[:, i] = moving_average(a[:, i], w=5)
+
+    # ========= 3. ZUPT =========
+    threshold = 0.15
+    a[np.linalg.norm(a, axis=1) < threshold] = 0
+
+    # ========= 4. 积分 =========
+    v = np.zeros_like(a, dtype=np.float64)
+    for i in range(1, len(a)):
+        v[i] = v[i - 1] + a[i] * dt
+
+    # ========= 5. 末端速度归零 =========
+    for i in range(3):
+        drift = np.linspace(0, v[-1, i], len(v))
+        v[:, i] -= drift
+
+    # ========= 6. 再积分 =========
+    p = np.zeros_like(v, dtype=np.float64)
+    for i in range(1, len(v)):
+        p[i] = p[i - 1] + v[i] * dt
+
+    p -= p[0]
+
+    # ========= 7. 归一化 =========
+    max_range = np.max(np.linalg.norm(p, axis=1))
+    if max_range > 0:
+        p /= max_range
+
+    p *= 50.0
+    # =============================
+    # 6. 绘制 3D 轨迹
+    # =============================
+    fig = plt.figure()
+    ax3d = fig.add_subplot(111, projection='3d')
+
+    ax3d.plot(p[:, 0], p[:, 1], p[:, 2])
+    ax3d.set_xlabel("X")
+    ax3d.set_ylabel("Y")
+    ax3d.set_zlabel("Z")
+
+    plt.title(file_path)
+    plt.show()
+
+
 if __name__ == "__main__":
     # 使用提供的数据文件路径
     file_path = 'test/none_001.csv'
