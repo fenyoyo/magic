@@ -71,7 +71,7 @@ class GyroDataCollector:
             print(f"\n=== 停止记录数据 ===")
             print(f"本次记录数据条数: {self.record_count}")
             print(f"保存文件: {self.csv_filename}")
-            print("=" * 30)
+            # print("=" * 30)
             # visualize_gyro_data.visualize_gyro_data(self.csv_filename)
             visualize_gyro_data.wordShow(self.csv_filename)
             # acceleration_visualizer.show(self.csv_filename)
@@ -105,10 +105,9 @@ class GyroDataCollector:
                 # 只写入存在于当前fieldnames中的字段值
                 filtered_data = {k: v for k, v in data.items() if k in self.fieldnames}
                 writer.writerow(filtered_data)
-                
             self.record_count += 1
-            seq_value = data.get('seq', data.get('sequence', 'N/A'))
-            print(f"✓ 记录数据 #{self.record_count} (seq: {seq_value})")
+            # seq_value = data.get('seq', data.get('sequence', 'N/A'))
+            # print(f"✓ 记录数据 #{self.record_count} (seq: {seq_value})")
             return True
 
         except Exception as e:
@@ -152,23 +151,13 @@ def on_message(client, userdata, msg):
 
         # 处理陀螺仪数据
         elif topic == "/device/gyro":
-
             # 解析JSON格式的消息
             payload = json.loads(msg.payload.decode('utf-8'))
-
-            # 处理不同格式的数据：如果接收的是"time"字段，则将其转换为"dt"
-            if 'time' in payload and 'dt' not in payload:
-                payload['dt'] = payload['time']
-
-            # 显示消息内容 - 显示所有字段而不是固定的几个
-            print(f"\n[{timestamp}] 收到陀螺仪数据:")
-            fields_info = ", ".join([f"{k}={v}" for k, v in payload.items()])
-            print(f"  数据: {fields_info}")
 
             # 只有在记录状态下才保存数据
             if collector.is_recording:
                 collector.save_data(payload)
-                print(f"  状态: [记录中] 已保存到 {collector.csv_filename}")
+                # print(f"  状态: [记录中] 已保存到 {collector.csv_filename}")
             else:
                 print(f"  状态: [等待开始] 数据未保存")
 

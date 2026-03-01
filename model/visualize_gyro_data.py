@@ -162,7 +162,6 @@ def wordShow(file_path):
     ax = data["wx"].values
     ay = data["wy"].values
     az = data["wz"].values
-    print(ax)
     # 转 float
     a = np.vstack((ax, ay, az)).T.astype(np.float64)
 
@@ -206,19 +205,6 @@ def wordShow(file_path):
         p /= max_range
 
     p *= 50.0
-    # =============================
-    # 6. 绘制 3D 轨迹
-    # =============================
-    # fig = plt.figure()
-    # ax3d = fig.add_subplot(111, projection='3d')
-    #
-    # ax3d.plot(p[:, 0], p[:, 1], p[:, 2])
-    # ax3d.set_xlabel("X")
-    # ax3d.set_ylabel("Y")
-    # ax3d.set_zlabel("Z")
-    #
-    # plt.title(file_path)
-    # plt.show()
 
     fig = plt.figure(figsize=(12, 10))
 
@@ -266,7 +252,11 @@ def wordShow(file_path):
     ax4.set_zlabel("Z")
 
     plt.tight_layout()
-    plt.show()
+    fig.text(0.5, 0.95, file_path, ha='center', fontsize=16, weight='bold')
+    # fig.suptitle(file_path, fontsize=14, y=1.02)  # 使用file_path作为整体标题
+    # plt.title(file_path)
+    # plt.show()
+    plt.savefig(file_path.replace(".csv", "_normalized.png"), dpi=300)
 
 
 if __name__ == "__main__":
