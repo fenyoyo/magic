@@ -209,15 +209,63 @@ def wordShow(file_path):
     # =============================
     # 6. 绘制 3D 轨迹
     # =============================
-    fig = plt.figure()
-    ax3d = fig.add_subplot(111, projection='3d')
+    # fig = plt.figure()
+    # ax3d = fig.add_subplot(111, projection='3d')
+    #
+    # ax3d.plot(p[:, 0], p[:, 1], p[:, 2])
+    # ax3d.set_xlabel("X")
+    # ax3d.set_ylabel("Y")
+    # ax3d.set_zlabel("Z")
+    #
+    # plt.title(file_path)
+    # plt.show()
 
-    ax3d.plot(p[:, 0], p[:, 1], p[:, 2])
-    ax3d.set_xlabel("X")
-    ax3d.set_ylabel("Y")
-    ax3d.set_zlabel("Z")
+    fig = plt.figure(figsize=(12, 10))
 
-    plt.title(file_path)
+    # =====================
+    # 主3D视图（自由视角）
+    # =====================
+    ax1 = fig.add_subplot(221, projection='3d')
+    ax1.plot(p[:, 0], p[:, 1], p[:, 2])
+    ax1.set_title("3D View")
+    ax1.set_xlabel("X")
+    ax1.set_ylabel("Y")
+    ax1.set_zlabel("Z")
+
+    # =====================
+    # 俯视图 (Top View)
+    # =====================
+    ax2 = fig.add_subplot(222, projection='3d')
+    ax2.plot(p[:, 0], p[:, 1], p[:, 2])
+    ax2.view_init(elev=90, azim=-90)  # 从上往下看
+    ax2.set_title("Top View (X-Y)")
+    ax2.set_xlabel("X")
+    ax2.set_ylabel("Y")
+    ax2.set_zlabel("Z")
+
+    # =====================
+    # 正视图 (Front View)
+    # =====================
+    ax3 = fig.add_subplot(223, projection='3d')
+    ax3.plot(p[:, 0], p[:, 1], p[:, 2])
+    ax3.view_init(elev=0, azim=-90)
+    ax3.set_title("Front View (Y-Z)")
+    ax3.set_xlabel("X")
+    ax3.set_ylabel("Y")
+    ax3.set_zlabel("Z")
+
+    # =====================
+    # 侧视图 (Side View)
+    # =====================
+    ax4 = fig.add_subplot(224, projection='3d')
+    ax4.plot(p[:, 0], p[:, 1], p[:, 2])
+    ax4.view_init(elev=0, azim=0)
+    ax4.set_title("Side View (X-Z)")
+    ax4.set_xlabel("X")
+    ax4.set_ylabel("Y")
+    ax4.set_zlabel("Z")
+
+    plt.tight_layout()
     plt.show()
 
 

@@ -8,7 +8,7 @@
 #define SSD1306_I2C_ADDRESS ((uint8_t)0x3C)
 #define I2C_MASTER_SCL_IO 17      /*!< gpio number for I2C master clock */
 #define I2C_MASTER_SDA_IO 18      /*!< gpio number for I2C master data  */
-#define I2C_MASTER_NUM I2C_NUM_1  /*!< I2C port number for master dev */
+#define I2C_MASTER_NUM I2C_NUM_0  /*!< I2C port number for master dev */
 #define I2C_MASTER_FREQ_HZ 100000 /*!< I2C master clock frequency */
 
 OLED::OLED() : m_ssd1306_dev(nullptr), m_initialized(false), m_display_queue(nullptr), m_task_handle(nullptr)
@@ -60,7 +60,7 @@ bool OLED::initialize()
     }
 
     // 初始化SSD1306 OLED显示屏
-    m_ssd1306_dev = ssd1306_create(I2C_NUM_1, SSD1306_I2C_ADDRESS);
+    m_ssd1306_dev = ssd1306_create(I2C_MASTER_NUM, SSD1306_I2C_ADDRESS);
     if (m_ssd1306_dev == nullptr)
     {
         ESP_LOGE(OLED_TAG, "Failed to create SSD1306 device handle");

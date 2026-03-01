@@ -33,6 +33,12 @@ typedef struct
 	int16_t gx;
 	int16_t gy;
 	int16_t gz;
+	int16_t rax;
+	int16_t ray;
+	int16_t raz;
+	int16_t wx;
+	int16_t wy;
+	int16_t wz;
 	float qx;
 	float qy;
 	float qz;

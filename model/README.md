@@ -1,72 +1,108 @@
-# 模型训练与测试指南
+# 陀螺仪手势识别系统
 
-## 1. 环境准备
+这个项目使用深度学习技术基于陀螺仪和加速度计数据来识别手势，如字母A、字母C等。
 
-### 安装依赖
-```bash
-pip install -r requirements.txt
+## 项目结构
+
+```
+model/
+├── dataset/                 # 训练数据集
+│   ├── letter_a/           # 字母A的手势数据
+│   ├── letter_c/           # 字母C的手势数据
+│   ├── up/                 # 向上手势数据
+│   ├── down/               # 向下手势数据
+│   ├── left/               # 向左手势数据
+│   └── right/              # 向右手势数据
+├── gesture_recognition_training.py  # 训练脚本
+├── gesture_predictor.py             # 预测脚本
+├── time_normalization.py            # 时间归一化工具
+└── README.md
 ```
 
-## 2. 模型训练
+## 数据格式
 
-### 基础训练
-```bash
-python training.py
+训练数据应该是CSV格式，包含以下列：
+- `ax`, `ay`, `az`: 三轴加速度计数据
+- `gx`, `gy`, `gz`: 三轴陀螺仪数据
+
+示例CSV文件结构：
+```csv
+ax,ay,az,gx,gy,gz
+0.1,0.2,9.8,0.01,0.02,0.03
+0.15,0.25,9.75,0.02,0.03,0.04
+...
 ```
-此脚本会：
-- 从 dataset 目录读取训练数据
-- 训练CNN模型
-- 保存模型为 model.h5
-- 保存预处理器为 scaler_mean.npy 和 scaler_scale.npy
-- 保存标签映射为 label_map.txt
 
-### 增强训练（推荐）
-```bash
-python enhanced_training.py
+## 如何使用
+
+### 1. 准备数据
+
+将你的训练数据按照手势类别放在`dataset`目录下，每个手势类别一个子目录：
+
 ```
-此脚本在基础训练基础上增加了：
-- "未知"类别样本
-- Dropout层防过拟合
-
-## 3. 模型测试
-
-### 基础测试
-```bash
-python test_model.py
+dataset/
+├── letter_a/
+│   ├── example_001.csv
+│   ├── example_002.csv
+│   └── ...
+├── letter_c/
+│   ├── example_001.csv
+│   ├── example_002.csv
+│   └── ...
+└── ...
 ```
-使用置信度阈值过滤低质量预测
 
-### 高级测试（推荐）
+### 2. 训练模型
+
+运行训练脚本：
+
 ```bash
-python advanced_test.py
+python gesture_recognition_training.py
 ```
-使用置信度和预测熵双重判断未知样本
 
-## 4. 处理高置信度误分类问题
+训练过程会：
+- 自动加载所有数据
+- 构建CNN-LSTM混合模型
+- 训练模型并显示进度
+- 保存最佳模型和预处理器
 
-对于像 `none_001.csv` 这样的文件，虽然被错误分类但置信度很高，可以采用以下方法：
+### 3. 使用模型进行预测
 
-### 方法1：置信度阈值
-在 `test_model.py` 中设置 `CONFIDENCE_THRESHOLD` 参数，
-当预测置信度低于该值时，将样本标记为 "unknown"
+运行预测脚本：
 
-### 方法2：预测熵分析
-在 `advanced_test.py` 中同时考虑：
-- 预测置信度：最高概率值
-- 预测熵：衡量预测分布的均匀性
-当预测熵较高时，表示模型对各个类别的预测比较平均，不太确定
+```bash
+python gesture_predictor.py
+```
 
-### 方法3：引入未知类别
-在训练阶段添加"未知"类别样本，让模型学会区分已知和未知模式
+或者在代码中使用：
 
-## 5. 调整建议
+```python
+from gesture_predictor import GesturePredictor
 
-针对 `none_001.csv` 被错误分类为 `triangle` 的问题：
+predictor = GesturePredictor()
+predicted_label, confidence, probabilities = predictor.predict_from_csv("path/to/your/data.csv")
+print(f"预测手势: {predicted_label}, 置信度: {confidence:.4f}")
+```
 
-1. 在 `advanced_test.py` 中调整阈值：
-   - 降低 `CONFIDENCE_THRESHOLD` (默认0.7)
-   - 降低 `ENTROPY_THRESHOLD` (默认0.4)
+## 模型架构
 
-2. 收集更多"无手势"样本加入训练集
+使用CNN-LSTM混合架构：
+- CNN层提取局部特征
+- LSTM层捕获时序关系
+- 全连接层进行最终分类
 
-3. 使用增强训练脚本 `enhanced_training.py`
+## 添加新手势
+
+要添加新的手势类型（如字母A）：
+
+1. 在`dataset`目录下创建新文件夹（如`letter_a`）
+2. 收集该手势的多个样本数据
+3. 每个样本保存为单独的CSV文件
+4. 重新运行训练脚本
+
+## 注意事项
+
+- 确保数据采样频率一致
+- 数据预处理会自动进行时间归一化
+- 模型会自动保存最佳权重
+- 可以通过修改训练脚本调整模型参数

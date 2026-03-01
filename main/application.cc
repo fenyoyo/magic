@@ -65,23 +65,23 @@ void Application::mqtt_trans(void *pvParameters)
     ESP_LOGI(TAG, "mqtt Start");
     auto &mqtt = MQTTManager::getInstance();
     POSE_a_g pose;
-    char payload[240];
+    char payload[300];
     while (1)
     {
         if (xQueueReceive(xQueueTrans, &pose, portMAX_DELAY))
         {
             // ESP_LOGI(TAG, "pose=%d %d %d", pose.ax, pose.ay, pose.az);
-            ESP_LOGI(TAG, "quat x:%6.2f y:%6.2f z:%6.2f w:%6.2f\n", pose.qx, pose.qy, pose.qz, pose.qw);
+            // ESP_LOGI(TAG, "quat x:%6.2f y:%6.2f z:%6.2f w:%6.2f\n", pose.qx, pose.qy, pose.qz, pose.qw);
             int len;
             len = snprintf(payload, sizeof(payload),
-                           "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d ,\"qx\":%6.2f,\"qy\":%6.2f,\"qz\":%6.2f,\"qw\":%f,\"roll\":%f,\"pitch\":%f,\"yaw\":%f}",
+                           "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d ,\"qx\":%6.2f,\"qy\":%6.2f,\"qz\":%6.2f,\"qw\":%f,\"roll\":%f,\"pitch\":%f,\"yaw\":%f,\"rax\":%d,\"ray\":%d,\"raz\":%d,\"wx\":%d,\"wy\":%d,\"wz\":%d}",
                            (unsigned)pose.seq,
                            pose.ax,
                            pose.ay,
                            pose.az,
                            pose.gx,
                            pose.gy,
-                           pose.gz, pose.qx, pose.qy, pose.qz, pose.qw, pose.roll, pose.pitch, pose.yaw);
+                           pose.gz, pose.qx, pose.qy, pose.qz, pose.qw, pose.roll, pose.pitch, pose.yaw, pose.rax, pose.ray, pose.raz, pose.wx, pose.wy, pose.wz);
 
             mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
         }
@@ -165,11 +165,15 @@ void Application::mpu6050(void *pvParameters)
                     mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
                     mpu.dmpGetQuaternion(&q, fifoBuffer);
-                    ESP_LOGI(TAG, "quat x:%6.2f y:%6.2f z:%6.2f w:%6.2f\n", q.x, q.y, q.z, q.w);
+                    // ESP_LOGI(TAG, "quat x:%6.2f y:%6.2f z:%6.2f w:%6.2f\n", q.x, q.y, q.z, q.w);
                     mpu.dmpGetEuler(euler, &q);
+                    mpu.dmpGetAccel(&aa, fifoBuffer);
                     mpu.dmpGetGravity(&gravity, &q);
                     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-                    ESP_LOGI(TAG, "roll:%f pitch:%f yaw:%f", ypr[2] * RAD_TO_DEG, ypr[1] * RAD_TO_DEG, ypr[0] * RAD_TO_DEG);
+                    mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+                    mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
+                    // ESP_LOGI(TAG, "roll:%f pitch:%f yaw:%f", ypr[2] * RAD_TO_DEG, ypr[1] * RAD_TO_DEG, ypr[0] * RAD_TO_DEG);
+                    // ESP_LOGI(TAG, "gx:%d gy:%d gz:%d", aaWorld.x, aaWorld.y, aaWorld.z);
                     POSE_a_g pose;
                     pose.seq = seq;
                     pose.ax = ax;
@@ -185,6 +189,12 @@ void Application::mpu6050(void *pvParameters)
                     pose.roll = ypr[2] * RAD_TO_DEG;
                     pose.pitch = ypr[1] * RAD_TO_DEG;
                     pose.yaw = ypr[0] * RAD_TO_DEG;
+                    pose.rax = aaReal.x;
+                    pose.ray = aaReal.y;
+                    pose.raz = aaReal.z;
+                    pose.wx = aaWorld.x;
+                    pose.wy = aaWorld.y;
+                    pose.wz = aaWorld.z;
 
                     if (xQueueSend(xQueueTrans, &pose, 100) != pdPASS)
                     {
