@@ -73,8 +73,10 @@ class GyroDataCollector:
             print(f"保存文件: {self.csv_filename}")
             # print("=" * 30)
             # visualize_gyro_data.visualize_gyro_data(self.csv_filename)
-            visualize_gyro_data.wordShow(self.csv_filename)
+            imgs = visualize_gyro_data.wordShow(self.csv_filename)
+            payload = json.dumps({"images": imgs})
             # acceleration_visualizer.show(self.csv_filename)
+            client.publish('/gesture/new', payload=payload, qos=1, retain=False)
 
     def save_data(self, data):
         """保存单条数据"""
@@ -122,10 +124,15 @@ collector = GyroDataCollector()
 # 回调函数：当客户端收到服务器的连接响应时调用
 def on_connect(client, userdata, flags, rc, properties):
     if rc == 0:
-        print("成功连接到MQTT服务器")
+        print("成功连接到 MQTT 服务器")
         # 订阅所有需要的主题
-        client.subscribe([("/device/gyro", 0), ("/device/start", 0), ("/device/stop", 0)])
-        print("已订阅主题: /device/gyro, /device/start, /device/stop")
+        client.subscribe([
+            ("/device/gyro", 0),
+            ("/device/start", 0),
+            ("/device/stop", 0),
+            ("/gesture/action", 0)
+        ])
+        print("已订阅主题：/device/gyro, /device/start, /device/stop, /gesture/action")
         print("等待开始命令...")
         print("-" * 40)
     else:
@@ -134,10 +141,22 @@ def on_connect(client, userdata, flags, rc, properties):
 
 # 回调函数：当收到消息时调用
 def on_message(client, userdata, msg):
+    global command  # 声明使用全局变量 command
     topic = msg.topic
     timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
 
     try:
+        # 处理命令切换消息
+        if topic == "/gesture/action":
+            print(f"\n[{timestamp}] 收到命令切换消息")
+            payload = json.loads(msg.payload.decode('utf-8'))
+            if 'action' in payload:
+                new_command = payload['action']
+                old_command = command
+                command = new_command
+                print(f"命令已切换：{old_command} -> {command}")
+            return
+
         # 处理控制消息
         if topic == "/device/start":
             print(f"\n[{timestamp}] 收到开始命令")
@@ -178,7 +197,7 @@ client.on_connect = on_connect
 client.on_message = on_message
 
 # 连接MQTT服务器
-broker_address = "mqtt.uyuo.me"
+broker_address = "111.229.114.77"
 
 try:
     print("=== 陀螺仪数据收集器 ===")

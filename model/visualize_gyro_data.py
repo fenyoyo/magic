@@ -256,7 +256,12 @@ def wordShow(file_path):
     # fig.suptitle(file_path, fontsize=14, y=1.02)  # 使用file_path作为整体标题
     # plt.title(file_path)
     # plt.show()
-    plt.savefig(file_path.replace(".csv", "_normalized.png"), dpi=300)
+    target_path_normalized = file_path.replace(".csv", ".png").replace("dataset", "output")
+    dk = os.path.dirname(target_path_normalized)
+    if not os.path.exists(dk):
+        os.makedirs(dk)
+    plt.savefig(target_path_normalized, dpi=300)
+    return [target_path_normalized]
 
 
 if __name__ == "__main__":
