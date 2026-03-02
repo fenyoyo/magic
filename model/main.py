@@ -76,7 +76,7 @@ class GyroDataCollector:
             imgs = visualize_gyro_data.wordShow(self.csv_filename)
             payload = json.dumps({"images": imgs})
             # acceleration_visualizer.show(self.csv_filename)
-            client.publish('/gesture/new', payload=payload, qos=1, retain=False)
+            client.publish('/gesture/new', payload=payload, qos=1)
 
     def save_data(self, data):
         """保存单条数据"""
@@ -130,9 +130,13 @@ def on_connect(client, userdata, flags, rc, properties):
             ("/device/gyro", 0),
             ("/device/start", 0),
             ("/device/stop", 0),
-            ("/gesture/action", 0)
+            ("/gesture/action", 0),
         ])
         print("已订阅主题：/device/gyro, /device/start, /device/stop, /gesture/action")
+        # 发布当前动作类型消息
+        payload = json.dumps({"action": command})
+        client.publish('/gesture/current_action', payload=payload, qos=1, retain=True)
+        print(f"已发布当前动作类型：{command}")
         print("等待开始命令...")
         print("-" * 40)
     else:
@@ -155,6 +159,9 @@ def on_message(client, userdata, msg):
                 old_command = command
                 command = new_command
                 print(f"命令已切换：{old_command} -> {command}")
+                # 发布当前动作类型消息
+                payload = json.dumps({"action": command})
+                client.publish('/gesture/current_action', payload=payload, qos=1, retain=True)
             return
 
         # 处理控制消息
