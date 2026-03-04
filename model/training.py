@@ -80,7 +80,7 @@ model = tf.keras.Sequential([
 
     tf.keras.layers.Conv1D(16, 5, activation='relu'),
     tf.keras.layers.MaxPooling1D(),
-
+    # tf.keras.layers.Dropout(0.3),
     tf.keras.layers.Conv1D(32, 3, activation='relu'),
 
     tf.keras.layers.GlobalAveragePooling1D(),
@@ -105,9 +105,77 @@ early_stop = EarlyStopping(
 model.fit(X_train,y_train,epochs=30,validation_data=(X_test,y_test),callbacks=[early_stop])
 
 # 评估模型
+print("\n" + "="*60)
 print("评估最终模型...")
+print("="*60)
 test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
-print(f"\n最终测试准确率: {test_accuracy:.4f}")
+print(f"最终测试准确率：{test_accuracy:.4f}")
+print(f"最终测试损失：{test_loss:.4f}")
+
+# 详细评估 - 每个类别的准确率
+print("\n" + "="*60)
+print("各类别详细评估")
+print("="*60)
+
+from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# 获取预测结果
+y_pred_probs = model.predict(X_test, verbose=0)
+y_pred = np.argmax(y_pred_probs, axis=1)
+
+# 反转标签映射
+idx_to_label = {idx: label for label, idx in label_map.items()}
+label_names = [idx_to_label[i] for i in range(len(label_map))]
+
+# 打印分类报告
+print("\n分类报告:")
+print(classification_report(y_test, y_pred, target_names=label_names))
+
+# 计算每个类别的准确率
+print("\n各类别准确率:")
+for i, label_name in enumerate(label_names):
+    mask = y_test == i
+    if np.sum(mask) > 0:
+        class_acc = np.mean(y_pred[mask] == i)
+        print(f"  {label_name}: {class_acc:.4f} ({np.sum(mask)} 个样本)")
+
+# 混淆矩阵
+print("\n混淆矩阵:")
+cm = confusion_matrix(y_test, y_pred)
+print(cm)
+
+# 保存混淆矩阵图
+plt.figure(figsize=(10, 8))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+            xticklabels=label_names, yticklabels=label_names)
+plt.title('Confusion Matrix')
+plt.ylabel('True Label')
+plt.xlabel('Predicted Label')
+plt.tight_layout()
+plt.savefig('./confusion_matrix.png', dpi=150)
+print("\n混淆矩阵图已保存为：confusion_matrix.png")
+
+# 保存训练结果参考数据
+results_data = {
+    'label_map': label_map,
+    'test_accuracy': float(test_accuracy),
+    'test_loss': float(test_loss),
+    'per_class_accuracy': {},
+    'confusion_matrix': cm.tolist()
+}
+
+for i, label_name in enumerate(label_names):
+    mask = y_test == i
+    if np.sum(mask) > 0:
+        class_acc = np.mean(y_pred[mask] == i)
+        results_data['per_class_accuracy'][label_name] = float(class_acc)
+
+import json
+with open('./training_results.json', 'w', encoding='utf-8') as f:
+    json.dump(results_data, f, indent=2, ensure_ascii=False)
+print("训练结果已保存为：training_results.json")
 
 # 保存模型和预处理器
 model.save('./model.h5')

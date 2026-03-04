@@ -15,7 +15,7 @@ import predict
 # command = 'triangle'
 # command = 'letter_c'
 # command = 'letter_w'
-command = 'letter_m'
+command = 'test'
 
 
 class GyroDataCollector:
@@ -31,7 +31,7 @@ class GyroDataCollector:
         if not self.is_recording:
             # 生成带序号的文件名
             # 查找当前目录下已有的文件数量，用于生成下一个序号
-            dataset_dir = f'dataset/{command}'
+            dataset_dir = f'{command}'
             os.makedirs(dataset_dir, exist_ok=True)
             
             # 获取当前目录下所有example_*.csv文件
