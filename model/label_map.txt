@@ -1,0 +1,9 @@
+left-right:0
+letter_alpha:1
+letter_c:2
+letter_m:3
+letter_r:4
+letter_w:5
+lightning:6
+right-left:7
+triangle:8
