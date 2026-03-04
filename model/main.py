@@ -3,7 +3,7 @@ import json
 import csv
 import os
 from datetime import datetime
-import  visualize_gyro_data
+import predict
 
 
 # command = 'circular'
@@ -73,10 +73,7 @@ class GyroDataCollector:
             print(f"保存文件: {self.csv_filename}")
             # print("=" * 30)
             # visualize_gyro_data.visualize_gyro_data(self.csv_filename)
-            imgs = visualize_gyro_data.wordShow(self.csv_filename)
-            payload = json.dumps({"images": imgs})
-            # acceleration_visualizer.show(self.csv_filename)
-            client.publish('/gesture/new', payload=payload, qos=1)
+            predict.premain(self.csv_filename)
 
     def save_data(self, data):
         """保存单条数据"""

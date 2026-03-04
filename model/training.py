@@ -109,12 +109,12 @@ print("评估最终模型...")
 test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
 print(f"\n最终测试准确率: {test_accuracy:.4f}")
 
-# # 保存模型和预处理器
-# model.save('./output/model.h5')
-# np.save('./output/scaler_mean.npy', scaler.mean_)
-# np.save('./output/scaler_scale.npy', scaler.scale_)
-# with open('./output/label_map.txt', 'w') as f:
-#     for label, idx in label_map.items():
-#         f.write(f"{label}:{idx}\n")
-#
-# print("模型和预处理器已保存完成！")
+# 保存模型和预处理器
+model.save('./model.h5')
+np.save('./scaler_mean.npy', scaler.mean_)
+np.save('./scaler_scale.npy', scaler.scale_)
+with open('./label_map.txt', 'w') as f:
+    for label, idx in label_map.items():
+        f.write(f"{label}:{idx}\n")
+
+print("模型和预处理器已保存完成！")
