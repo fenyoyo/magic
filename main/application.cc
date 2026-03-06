@@ -25,6 +25,8 @@
 
 #define TAG "Application"
 
+constexpr int Application::kTensorArenaSize; // 只需要声明，不需要再赋值
+
 #define GYRO_STREAM_MS 20
 
 /** 陀螺仪 MQTT 发布主题 */
@@ -380,6 +382,146 @@ void Application::Start()
     // Start imu task
     xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);
     xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL);
+
+    model = tflite::GetModel(g_person_detect_model_data);
+    if (model->version() != TFLITE_SCHEMA_VERSION)
+    {
+        MicroPrintf("Model provided is schema version %d not equal to supported "
+                    "version %d.",
+                    model->version(), TFLITE_SCHEMA_VERSION);
+        return;
+    }
+    // ESP_LOGI(TAG, "Model schema version: %lu", tensor_arena);
+    // if (tensor_arena == NULL)
+    // {
+    //     tensor_arena = (uint8_t *)heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    // }
+    // if (tensor_arena == NULL)
+    // {
+    //     printf("Couldn't allocate memory of %d bytes\n", kTensorArenaSize);
+    //     return;
+    // }
+
+    // static tflite::MicroMutableOpResolver<5> micro_op_resolver;
+    // micro_op_resolver.AddAveragePool2D();
+    // micro_op_resolver.AddConv2D();
+    // micro_op_resolver.AddDepthwiseConv2D();
+    // micro_op_resolver.AddReshape();
+    // micro_op_resolver.AddSoftmax();
+
+    static tflite::MicroMutableOpResolver<8> micro_op_resolver;
+    micro_op_resolver.AddExpandDims();     // 输入 reshape
+    micro_op_resolver.AddConv2D();         // Conv1D 层
+    micro_op_resolver.AddAveragePool2D();  // Max/GlobalPooling 层
+    micro_op_resolver.AddMaxPool2D();      // 输入 reshape 用
+    micro_op_resolver.AddReshape();        // 输入 reshape 用
+    micro_op_resolver.AddMean();           // Dense 层
+    micro_op_resolver.AddFullyConnected(); // Dense 层
+    micro_op_resolver.AddSoftmax();        // 输出 softmax
+
+    // Build an interpreter to run the model with.
+    // NOLINTNEXTLINE(runtime-global-variables)
+    static tflite::MicroInterpreter static_interpreter(
+        model, micro_op_resolver, tensor_arena, kTensorArenaSize);
+    interpreter = &static_interpreter;
+
+    // Allocate memory from the tensor_arena for the model's tensors.
+    TfLiteStatus allocate_status = interpreter->AllocateTensors();
+    if (allocate_status != kTfLiteOk)
+    {
+        MicroPrintf("AllocateTensors() failed");
+        return;
+    }
+    input = interpreter->input(0);
+    output = interpreter->output(0);
+    // 打印模型信息
+    ESP_LOGI(TAG, "模型初始化成功!");
+    ESP_LOGI(TAG, "输入形状：");
+    for (int i = 0; i < input->dims->size; i++)
+    {
+        ESP_LOGI(TAG, "  维度 %d: %d", i, input->dims->data[i]);
+    }
+    ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
+    ESP_LOGI(TAG, "张量竞技场使用：%zu / %d 字节",
+             interpreter->arena_used_bytes(), kTensorArenaSize);
+
+    const int num_time_steps = 100;      // 假设模型期望 10 个时间步
+    const int num_features_per_step = 6; // 六轴数据 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
+    // assert(input->bytes / sizeof(float) == num_time_steps * num_features_per_step); // 确保大小匹
+    const float noise_amplitude_acc = 0.05f; // 加速度计噪声幅度 (例如 +/- 0.05g)
+    const float noise_amplitude_gyro = 0.5f; // 陀螺仪噪声幅度 (例如 +/- 0.5 dps)
+    while (true)
+    {
+
+        // 模拟传感器数据（实际使用时替换为真实数据）
+        // TODO: 从实际传感器读取数据
+        // for (size_t t = 0; t < num_time_steps; ++t)
+        // {
+        //     float time_factor = static_cast<float>(t) / num_time_steps; // 0.0 到 1.0 之间
+
+        //     // 模拟加速度计数据 (单位 g, 假设静止状态附近有小幅度波动)
+        //     input->data.f[t * num_features_per_step + 0] = 1.0f + 0.02f * sinf(6.0f * M_PI * time_factor); // acc_z (接近重力)
+        //     input->data.f[t * num_features_per_step + 1] = 4.05f * cosf(4.0f * M_PI * time_factor);        // acc_y
+        //     input->data.f[t * num_features_per_step + 2] = 2.1f * sinf(2.0f * M_PI * time_factor);         // acc_x
+
+        //     // 模拟陀螺仪数据 (单位 deg/s, 假设缓慢旋转或抖动)
+        //     input->data.f[t * num_features_per_step + 3] = 3.5f * sinf(5.0f * M_PI * time_factor); // gyro_z
+        //     input->data.f[t * num_features_per_step + 4] = 1.5f * cosf(3.0f * M_PI * time_factor); // gyro_y
+        //     input->data.f[t * num_features_per_step + 5] = 2.0f * sinf(1.5f * M_PI * time_factor); // gyro_x
+        // }
+
+        for (size_t t = 0; t < num_time_steps; ++t)
+        {
+            float time_factor = static_cast<float>(t) / num_time_steps; // 0.0 到 1.0 之间
+
+            // 生成随机噪声 (范围 -noise_amplitude 到 +noise_amplitude)
+            // esp_random() 返回 uint32_t, 转换为 [0, 1) 的 float, 再缩放到 [-amplitude, amplitude]
+            auto get_noise = [](float amplitude) -> float
+            {
+                float rand_val = static_cast<float>(random()) / UINT32_MAX; // [0, 1)
+                return (rand_val * 2.0f - 1.0f) * amplitude;                // [-amplitude, +amplitude]
+            };
+
+            // 模拟加速度计数据 (单位 g, 假设静止状态附近有小幅度波动 + 随机噪声)
+            input->data.f[t * num_features_per_step + 0] = 0.1f * sinf(2.0f * M_PI * time_factor) + get_noise(noise_amplitude_acc);         // acc_x
+            input->data.f[t * num_features_per_step + 1] = 0.05f * cosf(4.0f * M_PI * time_factor) + get_noise(noise_amplitude_acc);        // acc_y
+            input->data.f[t * num_features_per_step + 2] = 1.0f + 0.02f * sinf(6.0f * M_PI * time_factor) + get_noise(noise_amplitude_acc); // acc_z (接近重力)
+
+            // 模拟陀螺仪数据 (单位 deg/s, 假设缓慢旋转或抖动 + 随机噪声)
+            input->data.f[t * num_features_per_step + 3] = 2.0f * sinf(1.5f * M_PI * time_factor) + get_noise(noise_amplitude_gyro); // gyro_x
+            input->data.f[t * num_features_per_step + 4] = 1.5f * cosf(3.0f * M_PI * time_factor) + get_noise(noise_amplitude_gyro); // gyro_y
+            input->data.f[t * num_features_per_step + 5] = 0.5f * sinf(5.0f * M_PI * time_factor) + get_noise(noise_amplitude_gyro); // gyro_z
+        }
+
+        // 执行推理
+        TfLiteStatus invoke_status = interpreter->Invoke();
+        if (invoke_status != kTfLiteOk)
+        {
+            ESP_LOGE(TAG, "推理失败");
+        }
+
+        // 获取结果（最大概率）
+        float max_score = -1.0f;
+        int predicted_class = 0;
+        ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
+        for (int i = 0; i < output->dims->data[1]; i++)
+        {
+            float score = output->data.f[i];
+            ESP_LOGE(TAG, "score = %.4f", score);
+            // ESP_LOGD(TAG, "  类别 %d: %.4f", i, score);
+            // if (score > max_score)
+            // {
+            // max_score = score;
+            // predicted_class = i;
+            // }
+        }
+
+        // ESP_LOGI(TAG, "预测结果：%s (置信度：%.4f)",
+        //          get_gesture_name(static_cast<Gesture>(predicted_class)),
+        //          max_score);
+        // 延迟 1 秒
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 
     // 启动OLED显示任务（现在由Board类管理）
     // 注意：实际的OLED任务现在在Board类中管理，这里不需要再创建
