@@ -91,6 +91,89 @@ void Application::mqtt_trans(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+// 新增函数：推送推理结果到MQTT
+void Application::publish_inference_result(int predicted_class, float confidence)
+{
+    auto &mqtt = MQTTManager::getInstance();
+    char payload[512]; // 增大缓冲区以容纳更多信息
+
+    // 转换预测类别为手势枚举
+    Gesture gesture = static_cast<Gesture>(predicted_class);
+    const char *gesture_name = get_gesture_name(gesture);
+
+    int len = snprintf(payload, sizeof(payload),
+                       "{\"predicted_class\":%d,\"gesture_name\":\"%s\",\"confidence\":%.4f,\"timestamp\":%lld}",
+                       predicted_class, gesture_name, confidence, (long long)esp_timer_get_time());
+
+    // 发布推理结果到指定主题
+    esp_err_t ret = mqtt.publish(CONFIG_MQTT_INFERENCE_RESULT_TOPIC, payload, (size_t)len, 0, 0);
+    if (ret == ESP_OK)
+    {
+        ESP_LOGI(TAG, "推理结果已发布到MQTT: 类别=%d, 手势=\"%s\", 置信度=%.4f", predicted_class, gesture_name, confidence);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "发布推理结果到MQTT失败，错误码: %d", ret);
+    }
+}
+
+// 新增函数：推送推理结果到MQTT（包含所有类别的概率）
+void Application::publish_inference_result_with_all_scores(int predicted_class, float confidence, float *all_scores, int num_classes)
+{
+    auto &mqtt = MQTTManager::getInstance();
+    char payload[2048]; // 增大缓冲区以容纳所有分数信息
+
+    // 转换预测类别为手势枚举
+    Gesture gesture = static_cast<Gesture>(predicted_class);
+    const char *gesture_name = get_gesture_name(gesture);
+
+    // 构建包含所有分数的JSON对象，格式为"手势名:概率"
+    int offset = snprintf(payload, sizeof(payload),
+                          "{\"predicted_class\":%d,\"gesture_name\":\"%s\",\"confidence\":%.4f,\"timestamp\":%lld,\"all_scores\":{",
+                          predicted_class, gesture_name, confidence, (long long)esp_timer_get_time());
+
+    // 添加所有类别的分数，格式为"手势名":概率
+    for (int i = 0; i < num_classes; i++)
+    {
+        // 获取当前类别的手势名称
+        Gesture current_gesture = static_cast<Gesture>(i);
+        const char *current_gesture_name = get_gesture_name(current_gesture);
+
+        if (i == num_classes - 1)
+        {
+            // 最后一个元素，不加逗号
+            offset += snprintf(payload + offset, sizeof(payload) - offset, "\"%s\":%.4f", current_gesture_name, all_scores[i]);
+        }
+        else
+        {
+            // 非最后一个元素，加逗号
+            offset += snprintf(payload + offset, sizeof(payload) - offset, "\"%s\":%.4f,", current_gesture_name, all_scores[i]);
+        }
+
+        // 检查缓冲区是否足够
+        if (sizeof(payload) - offset <= 50)
+        { // 留出一些空间给结尾
+            ESP_LOGW(TAG, "缓冲区可能不足，停止添加更多分数");
+            break;
+        }
+    }
+
+    // 完成JSON字符串
+    snprintf(payload + offset, sizeof(payload) - offset, "}}");
+
+    // 发布推理结果到指定主题
+    size_t payload_len = strlen(payload);
+    esp_err_t ret = mqtt.publish(CONFIG_MQTT_INFERENCE_RESULT_TOPIC, payload, payload_len, 0, 0);
+    if (ret == ESP_OK)
+    {
+        ESP_LOGI(TAG, "推理结果已发布到MQTT: 类别=%d, 手势=\"%s\", 置信度=%.4f, 总类别数=%d", predicted_class, gesture_name, confidence, num_classes);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "发布推理结果到MQTT失败，错误码: %d", ret);
+    }
+}
+
 // 辅助函数：执行模型推理
 void Application::run_inference()
 {
@@ -136,20 +219,24 @@ void Application::run_normalized_inference()
 {
     // 构建当前收集的数据为二维向量格式
     std::vector<std::vector<float>> raw_data(collected_data_index);
-    for (int i = 0; i < collected_data_index; i++) {
+    for (int i = 0; i < collected_data_index; i++)
+    {
         raw_data[i].resize(kNumFeaturesPerStep);
-        for (int j = 0; j < kNumFeaturesPerStep; j++) {
+        for (int j = 0; j < kNumFeaturesPerStep; j++)
+        {
             raw_data[i][j] = collected_data[i * kNumFeaturesPerStep + j];
         }
     }
 
     // 使用时间序列归一化函数将数据标准化为目标长度
-    std::vector<std::vector<float>> normalized_data = 
+    std::vector<std::vector<float>> normalized_data =
         normalize_mpu6050_data(raw_data, kNumTimeSteps);
 
     // 将归一化后的数据复制回模型输入张量
-    for (int i = 0; i < kNumTimeSteps; i++) {
-        for (int j = 0; j < kNumFeaturesPerStep; j++) {
+    for (int i = 0; i < kNumTimeSteps; i++)
+    {
+        for (int j = 0; j < kNumFeaturesPerStep; j++)
+        {
             collected_data[i * kNumFeaturesPerStep + j] = normalized_data[i][j];
         }
     }
@@ -168,22 +255,28 @@ void Application::run_normalized_inference()
         return;
     }
 
-    // 获取结果（最大概率）
+    // 获取所有类别的概率
+    int num_classes = output->dims->data[1];
+    float scores[32]; // 假设最多有32个类别，根据实际情况调整
     float max_score = -1.0f;
     int predicted_class = 0;
-    ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
-    for (int i = 0; i < output->dims->data[1]; i++)
+
+    ESP_LOGI(TAG, "输出类别数：%d", num_classes);
+    for (int i = 0; i < num_classes; i++)
     {
-        float score = output->data.f[i];
-        ESP_LOGI(TAG, "score[%d] = %.4f", i, score);
-        if (score > max_score)
+        scores[i] = output->data.f[i];
+        ESP_LOGI(TAG, "score[%d] = %.4f", i, scores[i]);
+        if (scores[i] > max_score)
         {
-            max_score = score;
+            max_score = scores[i];
             predicted_class = i;
         }
     }
 
     ESP_LOGI(TAG, "预测结果：类别 %d (置信度：%.4f)", predicted_class, max_score);
+
+    // 通过MQTT发布推理结果（包含所有类别的概率）
+    publish_inference_result_with_all_scores(predicted_class, max_score, scores, num_classes);
 
     // 重置数据收集索引
     collected_data_index = 0;
@@ -472,7 +565,7 @@ void Application::Start()
     xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);
     xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL);
 
-    model = tflite::GetModel(g_person_detect_model_data);
+    model = tflite::GetModel(person_detect_model_data);
     if (model->version() != TFLITE_SCHEMA_VERSION)
     {
         MicroPrintf("Model provided is schema version %d not equal to supported "
