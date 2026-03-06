@@ -2,10 +2,9 @@
 #include <esp_log.h>
 #include "time_series_normalizer.h"
 #include <vector>
+#include "application.h" // 包含手势枚举定义
 
 #define TAG "InferenceEngine"
-
-constexpr int InferenceEngine::kTensorArenaSize; // 只需要声明，不需要再赋值
 
 InferenceEngine::InferenceEngine()
 {
@@ -120,12 +119,12 @@ void InferenceEngine::run_normalized_inference(float *collected_data, int collec
 
     // 获取所有类别的概率
     num_classes_ = output->dims->data[1];
-    float scores[num_classes_]; // 假设最多有32个类别，根据实际情况调整
+    float scores[32]; // 假设最多有32个类别，根据实际情况调整
     float max_score = -1.0f;
     predicted_class_ = 0;
 
     ESP_LOGI(TAG, "输出类别数：%d", num_classes_);
-    for (int i = 0; i < num_classes_; i++)
+    for (int i = 0; i < num_classes_ && i < 32; i++)
     {
         scores[i] = output->data.f[i];
         all_scores_[i] = scores[i];

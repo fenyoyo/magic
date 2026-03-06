@@ -14,7 +14,6 @@
 #define CONFIG_MQTT_INFERENCE_RESULT_TOPIC "/device/inference/result"
 #endif
 
-
 class Application
 {
 private:
@@ -55,7 +54,6 @@ public:
     void onMQTTMessage(const std::string &topic, const std::string &data, int &data_len);
     void onMQTTConnection(bool connected);
     void onMQTTError(int error_type, void *error_data);
-    void publish_inference_result(int predicted_class, float confidence);
     void publish_inference_result_with_all_scores(int predicted_class, float confidence, float *all_scores, int num_classes);
 
     InferenceEngine inference_engine;

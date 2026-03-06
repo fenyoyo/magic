@@ -89,82 +89,26 @@ void Application::mqtt_trans(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-// 新增函数：推送推理结果到MQTT
-void Application::publish_inference_result(int predicted_class, float confidence)
-{
-    auto &mqtt = MQTTManager::getInstance();
-    char payload[512]; // 增大缓冲区以容纳更多信息
-
-    // 转换预测类别为手势枚举
-    Gesture gesture = static_cast<Gesture>(predicted_class);
-    const char *gesture_name = get_gesture_name(gesture);
-
-    int len = snprintf(payload, sizeof(payload),
-                       "{\"predicted_class\":%d,\"gesture_name\":\"%s\",\"confidence\":%.4f,\"timestamp\":%lld}",
-                       predicted_class, gesture_name, confidence, (long long)esp_timer_get_time());
-
-    // 发布推理结果到指定主题
-    esp_err_t ret = mqtt.publish(CONFIG_MQTT_INFERENCE_RESULT_TOPIC, payload, (size_t)len, 0, 0);
-    if (ret == ESP_OK)
-    {
-        ESP_LOGI(TAG, "推理结果已发布到MQTT: 类别=%d, 手势=\"%s\", 置信度=%.4f", predicted_class, gesture_name, confidence);
-    }
-    else
-    {
-        ESP_LOGE(TAG, "发布推理结果到MQTT失败，错误码: %d", ret);
-    }
-}
-
 // 新增函数：推送推理结果到MQTT（包含所有类别的概率）
 void Application::publish_inference_result_with_all_scores(int predicted_class, float confidence, float *all_scores, int num_classes)
 {
     auto &mqtt = MQTTManager::getInstance();
     char payload[2048]; // 增大缓冲区以容纳所有分数信息
 
-    // 转换预测类别为手势枚举
-    Gesture gesture = static_cast<Gesture>(predicted_class);
-    const char *gesture_name = get_gesture_name(gesture);
-
     // 构建包含所有分数的JSON对象，格式为"手势名:概率"
     int offset = snprintf(payload, sizeof(payload),
-                          "{\"predicted_class\":%d,\"gesture_name\":\"%s\",\"confidence\":%.4f,\"timestamp\":%lld,\"all_scores\":{",
-                          predicted_class, gesture_name, confidence, (long long)esp_timer_get_time());
-
-    // 添加所有类别的分数，格式为"手势名":概率
-    for (int i = 0; i < num_classes; i++)
-    {
-        // 获取当前类别的手势名称
-        Gesture current_gesture = static_cast<Gesture>(i);
-        const char *current_gesture_name = get_gesture_name(current_gesture);
-
-        if (i == num_classes - 1)
-        {
-            // 最后一个元素，不加逗号
-            offset += snprintf(payload + offset, sizeof(payload) - offset, "\"%s\":%.4f", current_gesture_name, all_scores[i]);
-        }
-        else
-        {
-            // 非最后一个元素，加逗号
-            offset += snprintf(payload + offset, sizeof(payload) - offset, "\"%s\":%.4f,", current_gesture_name, all_scores[i]);
-        }
-
-        // 检查缓冲区是否足够
-        if (sizeof(payload) - offset <= 50)
-        { // 留出一些空间给结尾
-            ESP_LOGW(TAG, "缓冲区可能不足，停止添加更多分数");
-            break;
-        }
-    }
+                          "{\"predicted_class\":%d,\"confidence\":%.4f",
+                          predicted_class, confidence);
 
     // 完成JSON字符串
-    snprintf(payload + offset, sizeof(payload) - offset, "}}");
+    snprintf(payload + offset, sizeof(payload) - offset, "}");
 
     // 发布推理结果到指定主题
     size_t payload_len = strlen(payload);
     esp_err_t ret = mqtt.publish(CONFIG_MQTT_INFERENCE_RESULT_TOPIC, payload, payload_len, 0, 0);
     if (ret == ESP_OK)
     {
-        ESP_LOGI(TAG, "推理结果已发布到MQTT: 类别=%d, 手势=\"%s\", 置信度=%.4f, 总类别数=%d", predicted_class, gesture_name, confidence, num_classes);
+        ESP_LOGI(TAG, "推理结果已发布到MQTT: 类别=%d, 置信度=%.4f, 总类别数=%d", predicted_class, confidence, num_classes);
     }
     else
     {
