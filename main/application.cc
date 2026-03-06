@@ -241,6 +241,24 @@ void Application::run_normalized_inference()
         }
     }
     float *input_data = preprocess(collected_data, 100);
+
+    // // 打印预处理后的input_data (完整版 - 可选)
+    // #ifdef PRINT_FULL_INPUT_DATA
+    // ESP_LOGI(TAG, "Preprocessed input_data (all %d values):", kNumTimeSteps * kNumFeaturesPerStep);
+    // for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++) {
+    //     ESP_LOGI(TAG, "  input_data[%d] = %.6f", i, input_data[i]);
+    // }
+    // #else
+    // // 打印预处理后的input_data (仅前20个值)
+    // ESP_LOGI(TAG, "Preprocessed input_data (first 20 values):");
+    // for (int i = 0; i < 20 && i < kNumTimeSteps * kNumFeaturesPerStep; i++) {
+    //     ESP_LOGI(TAG, "  input_data[%d] = %.6f", i, input_data[i]);
+    // }
+    // if (kNumTimeSteps * kNumFeaturesPerStep > 20) {
+    //     ESP_LOGI(TAG, "  ... (showing only first 20 of %d total values)", kNumTimeSteps * kNumFeaturesPerStep);
+    // }
+    // #endif
+
     // 现在使用归一化后的数据执行推理
     for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++)
     {
@@ -617,13 +635,13 @@ void Application::Start()
     input = interpreter->input(0);
     output = interpreter->output(0);
     // 打印模型信息
-    ESP_LOGI(TAG, "模型初始化成功!");
-    ESP_LOGI(TAG, "输入形状：");
-    for (int i = 0; i < input->dims->size; i++)
-    {
-        ESP_LOGI(TAG, "  维度 %d: %d", i, input->dims->data[i]);
-    }
-    ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
+    // ESP_LOGI(TAG, "模型初始化成功!");
+    // ESP_LOGI(TAG, "输入形状：");
+    // for (int i = 0; i < input->dims->size; i++)
+    // {
+    //     ESP_LOGI(TAG, "  维度 %d: %d", i, input->dims->data[i]);
+    // }
+    // ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
     ESP_LOGI(TAG, "张量竞技场使用：%zu / %d 字节",
              interpreter->arena_used_bytes(), kTensorArenaSize);
 
