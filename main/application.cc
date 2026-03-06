@@ -390,12 +390,12 @@ void Application::mpu6050(void *pvParameters)
                     if (app.collecting_data && app.collected_data_index < app.kNumTimeSteps)
                     {
                         // 存储六轴数据 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
-                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 0] = (float)ax / 8192.0f; // 归一化加速度计数据
-                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 1] = (float)ay / 8192.0f;
-                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 2] = (float)az / 8192.0f;
-                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 3] = (float)gx / 131.0f; // 归一化陀螺仪数据
-                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 4] = (float)gy / 131.0f;
-                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 5] = (float)gz / 131.0f;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 0] = (float)ax;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 1] = (float)ay;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 2] = (float)az;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 3] = (float)gx;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 4] = (float)gy;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 5] = (float)gz;
 
                         app.collected_data_index++;
 
