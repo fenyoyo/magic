@@ -91,6 +91,46 @@ void Application::mqtt_trans(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+// 辅助函数：执行模型推理
+void Application::run_inference()
+{
+    // Application &app = Application::getInstance();
+
+    // 将收集的数据复制到模型输入张量
+    for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++)
+    {
+        input->data.f[i] = collected_data[i];
+    }
+
+    // 执行推理
+    TfLiteStatus invoke_status = interpreter->Invoke();
+    if (invoke_status != kTfLiteOk)
+    {
+        ESP_LOGE(TAG, "推理失败");
+        return;
+    }
+
+    // 获取结果（最大概率）
+    float max_score = -1.0f;
+    int predicted_class = 0;
+    ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
+    for (int i = 0; i < output->dims->data[1]; i++)
+    {
+        float score = output->data.f[i];
+        ESP_LOGI(TAG, "score[%d] = %.4f", i, score);
+        if (score > max_score)
+        {
+            max_score = score;
+            predicted_class = i;
+        }
+    }
+
+    ESP_LOGI(TAG, "预测结果：类别 %d (置信度：%.4f)", predicted_class, max_score);
+
+    // 重置数据收集索引
+    collected_data_index = 0;
+}
+
 void Application::mpu6050(void *pvParameters)
 {
     // Initialize mpu6050
@@ -137,8 +177,14 @@ void Application::mpu6050(void *pvParameters)
         {
             seq = 0;
             gpio_set_level(LED_GPIO, 1);
-            ESP_LOGI(TAG, "Button pressed, gyro MQTT stream start");
+            ESP_LOGI(TAG, "Button pressed, start collecting MPU6050 data for inference");
             mqtt.publish("/device/start", "", 0, 0, 0);
+
+            // 开始收集数据
+            Application &app = Application::getInstance();
+            app.collecting_data = true;
+            app.collected_data_index = 0;
+
             while (gpio_get_level(BUTTON_GPIO) == 0)
             {
                 if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
@@ -148,34 +194,20 @@ void Application::mpu6050(void *pvParameters)
                     mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
                     mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
 
-                    // float _roll = ypr[2] * RAD_TO_DEG;
-                    // float _pitch = ypr[1] * RAD_TO_DEG;
-                    // float _yaw = ypr[0] * RAD_TO_DEG;
                     gpio_set_level(LED_GPIO, 1);
-                    // Get the Latest packet
-                    // getYawPitchRoll();                    // len = snprintf(payload, sizeof(payload),
-                    //                "{\"seq\":%u,\"time\":%f,\"_roll\":%.4f,\"_pitch\":%.4f,\"_yaw\":%.4f}",
-                    //                (unsigned)seq,
-                    //                dt,
-                    //                _roll,
-                    //                _pitch,
-                    //                _yaw);
-                    // ESP_LOGI(TAG, "%s", payload);
-                    // getWorldAccel();
+
                     int16_t ax, ay, az, gx, gy, gz;
                     mpu.getAcceleration(&ax, &ay, &az);
                     mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
                     mpu.dmpGetQuaternion(&q, fifoBuffer);
-                    // ESP_LOGI(TAG, "quat x:%6.2f y:%6.2f z:%6.2f w:%6.2f\n", q.x, q.y, q.z, q.w);
                     mpu.dmpGetEuler(euler, &q);
                     mpu.dmpGetAccel(&aa, fifoBuffer);
                     mpu.dmpGetGravity(&gravity, &q);
                     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
                     mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
                     mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-                    // ESP_LOGI(TAG, "roll:%f pitch:%f yaw:%f", ypr[2] * RAD_TO_DEG, ypr[1] * RAD_TO_DEG, ypr[0] * RAD_TO_DEG);
-                    // ESP_LOGI(TAG, "gx:%d gy:%d gz:%d", aaWorld.x, aaWorld.y, aaWorld.z);
+
                     POSE_a_g pose;
                     pose.seq = seq;
                     pose.ax = ax;
@@ -202,15 +234,27 @@ void Application::mpu6050(void *pvParameters)
                     {
                         ESP_LOGE(TAG, "xQueueSend fail");
                     }
-                    // len = snprintf(payload, sizeof(payload),
-                    //                "{\"seq\":%u,\"time\":%f,\"x\":%d,\"y\":%d,\"z\":%d}",
-                    //                (unsigned)seq,
-                    //                dt,
-                    //                aaWorld.x,
-                    //                aaWorld.y,
-                    //                aaWorld.z);
-                    // ESP_LOGI(TAG, "%s", payload);
-                    // mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
+
+                    // 如果正在收集数据且未超出缓冲区大小，则保存数据用于推理
+                    if (app.collecting_data && app.collected_data_index < app.kNumTimeSteps)
+                    {
+                        // 存储六轴数据 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 0] = (float)ax / 8192.0f; // 归一化加速度计数据
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 1] = (float)ay / 8192.0f;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 2] = (float)az / 8192.0f;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 3] = (float)gx / 131.0f; // 归一化陀螺仪数据
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 4] = (float)gy / 131.0f;
+                        app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 5] = (float)gz / 131.0f;
+
+                        app.collected_data_index++;
+
+                        // 如果已收集足够的数据，停止收集
+                        if (app.collected_data_index >= app.kNumTimeSteps)
+                        {
+                            ESP_LOGI(TAG, "Collected enough data for inference (%d samples)", app.collected_data_index);
+                            app.collecting_data = false;
+                        }
+                    }
                 }
                 else
                 {
@@ -219,43 +263,46 @@ void Application::mpu6050(void *pvParameters)
                 seq++;
                 vTaskDelay(pdMS_TO_TICKS(GYRO_STREAM_MS));
             }
+
             gpio_set_level(LED_GPIO, 0);
             mqtt.publish("/device/stop", "", 0, 0, 0);
-            ESP_LOGI(TAG, "Button released, gyro MQTT stream end (total %u)", (unsigned)seq);
+            ESP_LOGI(TAG, "Button released, collected %u samples", (unsigned)seq);
+
+            // 按钮释放后，如果收集到了足够的数据，则执行推理
+            Application &app_instance = Application::getInstance();
+            if (app_instance.collected_data_index > 0)
+            {
+                ESP_LOGI(TAG, "Executing inference with %d samples", app_instance.collected_data_index);
+
+                // 如果收集的数据不足，用最后的数据填充剩余空间
+                if (app_instance.collected_data_index < app_instance.kNumTimeSteps)
+                {
+                    ESP_LOGW(TAG, "Insufficient data collected (%d/%d), padding with last values",
+                             app_instance.collected_data_index, app_instance.kNumTimeSteps);
+                    for (int i = app_instance.collected_data_index; i < app_instance.kNumTimeSteps; i++)
+                    {
+                        // 使用最后一个有效数据点填充
+                        for (int j = 0; j < app_instance.kNumFeaturesPerStep; j++)
+                        {
+                            app_instance.collected_data[i * app_instance.kNumFeaturesPerStep + j] =
+                                app_instance.collected_data[(app_instance.collected_data_index - 1) * app_instance.kNumFeaturesPerStep + j];
+                        }
+                    }
+                    app_instance.collected_data_index = app_instance.kNumTimeSteps;
+                }
+
+                // 执行推理
+                app.run_inference();
+            }
+            else
+            {
+                ESP_LOGW(TAG, "No data collected, skipping inference");
+            }
         }
 
         if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
         {
-
-            // mqtt.publish("/device/start", "", 0, 0, 0);
-            // float _roll = ypr[2] * RAD_TO_DEG;
-            // float _pitch = ypr[1] * RAD_TO_DEG;
-            // float _yaw = ypr[0] * RAD_TO_DEG;
-
-            // // Send UDP packet
-            // POSE_t pose;
-            // pose.roll = _roll;
-            // pose.pitch = _pitch;
-            // pose.yaw = _yaw;
-            // if (xQueueSend(xQueueTrans, &pose, 100) != pdPASS)
-            // {
-            //     ESP_LOGE(TAG, "xQueueSend fail");
-            // }
-
-            // int len;
-            // char payload[120]; // 增加payload大小以容纳预测数据
-            // len = snprintf(payload, sizeof(payload),
-            //                "{\"seq\":%u,\"_roll\":%.4f,\"_pitch\":%.4f,\"_yaw\":%.4f}",
-            //                (unsigned)0,
-            //                _roll,
-            //                _pitch,
-            //                _yaw);
-            // mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
-
-            // getQuaternion();
-            // getEuler();
-            // getRealAccel();
-            // getWorldAccel();
+            // 在非数据收集模式下，仍然可以获取数据用于其他用途（如显示）
         }
 
         // Best result is to match with DMP refresh rate
@@ -445,83 +492,9 @@ void Application::Start()
     ESP_LOGI(TAG, "张量竞技场使用：%zu / %d 字节",
              interpreter->arena_used_bytes(), kTensorArenaSize);
 
-    const int num_time_steps = 100;      // 假设模型期望 10 个时间步
-    const int num_features_per_step = 6; // 六轴数据 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
-    // assert(input->bytes / sizeof(float) == num_time_steps * num_features_per_step); // 确保大小匹
-    const float noise_amplitude_acc = 0.05f; // 加速度计噪声幅度 (例如 +/- 0.05g)
-    const float noise_amplitude_gyro = 0.5f; // 陀螺仪噪声幅度 (例如 +/- 0.5 dps)
-    while (true)
-    {
-
-        // 模拟传感器数据（实际使用时替换为真实数据）
-        // TODO: 从实际传感器读取数据
-        // for (size_t t = 0; t < num_time_steps; ++t)
-        // {
-        //     float time_factor = static_cast<float>(t) / num_time_steps; // 0.0 到 1.0 之间
-
-        //     // 模拟加速度计数据 (单位 g, 假设静止状态附近有小幅度波动)
-        //     input->data.f[t * num_features_per_step + 0] = 1.0f + 0.02f * sinf(6.0f * M_PI * time_factor); // acc_z (接近重力)
-        //     input->data.f[t * num_features_per_step + 1] = 4.05f * cosf(4.0f * M_PI * time_factor);        // acc_y
-        //     input->data.f[t * num_features_per_step + 2] = 2.1f * sinf(2.0f * M_PI * time_factor);         // acc_x
-
-        //     // 模拟陀螺仪数据 (单位 deg/s, 假设缓慢旋转或抖动)
-        //     input->data.f[t * num_features_per_step + 3] = 3.5f * sinf(5.0f * M_PI * time_factor); // gyro_z
-        //     input->data.f[t * num_features_per_step + 4] = 1.5f * cosf(3.0f * M_PI * time_factor); // gyro_y
-        //     input->data.f[t * num_features_per_step + 5] = 2.0f * sinf(1.5f * M_PI * time_factor); // gyro_x
-        // }
-
-        for (size_t t = 0; t < num_time_steps; ++t)
-        {
-            float time_factor = static_cast<float>(t) / num_time_steps; // 0.0 到 1.0 之间
-
-            // 生成随机噪声 (范围 -noise_amplitude 到 +noise_amplitude)
-            // esp_random() 返回 uint32_t, 转换为 [0, 1) 的 float, 再缩放到 [-amplitude, amplitude]
-            auto get_noise = [](float amplitude) -> float
-            {
-                float rand_val = static_cast<float>(random()) / UINT32_MAX; // [0, 1)
-                return (rand_val * 2.0f - 1.0f) * amplitude;                // [-amplitude, +amplitude]
-            };
-
-            // 模拟加速度计数据 (单位 g, 假设静止状态附近有小幅度波动 + 随机噪声)
-            input->data.f[t * num_features_per_step + 0] = 0.1f * sinf(2.0f * M_PI * time_factor) + get_noise(noise_amplitude_acc);         // acc_x
-            input->data.f[t * num_features_per_step + 1] = 0.05f * cosf(4.0f * M_PI * time_factor) + get_noise(noise_amplitude_acc);        // acc_y
-            input->data.f[t * num_features_per_step + 2] = 1.0f + 0.02f * sinf(6.0f * M_PI * time_factor) + get_noise(noise_amplitude_acc); // acc_z (接近重力)
-
-            // 模拟陀螺仪数据 (单位 deg/s, 假设缓慢旋转或抖动 + 随机噪声)
-            input->data.f[t * num_features_per_step + 3] = 2.0f * sinf(1.5f * M_PI * time_factor) + get_noise(noise_amplitude_gyro); // gyro_x
-            input->data.f[t * num_features_per_step + 4] = 1.5f * cosf(3.0f * M_PI * time_factor) + get_noise(noise_amplitude_gyro); // gyro_y
-            input->data.f[t * num_features_per_step + 5] = 0.5f * sinf(5.0f * M_PI * time_factor) + get_noise(noise_amplitude_gyro); // gyro_z
-        }
-
-        // 执行推理
-        TfLiteStatus invoke_status = interpreter->Invoke();
-        if (invoke_status != kTfLiteOk)
-        {
-            ESP_LOGE(TAG, "推理失败");
-        }
-
-        // 获取结果（最大概率）
-        float max_score = -1.0f;
-        int predicted_class = 0;
-        ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
-        for (int i = 0; i < output->dims->data[1]; i++)
-        {
-            float score = output->data.f[i];
-            ESP_LOGE(TAG, "score = %.4f", score);
-            // ESP_LOGD(TAG, "  类别 %d: %.4f", i, score);
-            // if (score > max_score)
-            // {
-            // max_score = score;
-            // predicted_class = i;
-            // }
-        }
-
-        // ESP_LOGI(TAG, "预测结果：%s (置信度：%.4f)",
-        //          get_gesture_name(static_cast<Gesture>(predicted_class)),
-        //          max_score);
-        // 延迟 1 秒
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    // 初始化数据收集索引
+    getInstance().collected_data_index = 0;
+    getInstance().collecting_data = false;
 
     // 启动OLED显示任务（现在由Board类管理）
     // 注意：实际的OLED任务现在在Board类中管理，这里不需要再创建

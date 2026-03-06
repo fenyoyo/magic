@@ -38,6 +38,7 @@ public:
     void onMQTTMessage(const std::string &topic, const std::string &data, int &data_len);
     void onMQTTConnection(bool connected);
     void onMQTTError(int error_type, void *error_data);
+    void run_inference();
 
     const tflite::Model *model = nullptr;
     tflite::MicroInterpreter *interpreter = nullptr;
@@ -47,6 +48,13 @@ public:
 
     static constexpr int kTensorArenaSize = 200 * 1024;
     uint8_t tensor_arena[kTensorArenaSize];
+
+    // 添加用于存储MPU6050数据的缓冲区
+    static constexpr int kNumTimeSteps = 100;     // 模型期望的时间步数
+    static constexpr int kNumFeaturesPerStep = 6; // 每个时间步的特征数 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
+    float collected_data[kNumTimeSteps * kNumFeaturesPerStep];
+    int collected_data_index = 0;
+    bool collecting_data = false;
 };
 
 #endif // _APPLICATION_H_
