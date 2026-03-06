@@ -1,6 +1,6 @@
 # 主组件
 idf_component_register(SRCS "inference_engine.cc" "time_series_normalizer.cc" "main.cc" "mqtt_manager.cc" "application.cc" "board.cc" "wifi_manager.cc" "oled.cc" "person_detect_model_data.cc"
-                    PRIV_REQUIRES esp_wifi nvs_flash freertos mqtt driver esp-tflite-micro
+                    PRIV_REQUIRES esp_wifi nvs_flash freertos mqtt driver esp-tflite-micro efuse
                     REQUIRES MPU6050
                     INCLUDE_DIRS ".")
 

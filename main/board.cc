@@ -6,15 +6,21 @@
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
+#include "esp_efuse.h"
+#include "esp_efuse_table.h"
+#include "esp_mac.h"
 
 #include "wifi_manager.h"
 #include "driver/gpio.h"
+#include <string>
+#include <cstdio>
 
 #define TAG "Board"
 Board::Board()
 {
     ESP_LOGI(TAG, "Board init");
     m_oled = nullptr;
+    getDeviceId();
 }
 
 Board::~Board()
@@ -97,4 +103,22 @@ bool Board::initOLED()
         ESP_LOGI(TAG, "OLED initialized successfully");
     }
     return true;
+}
+
+std::string Board::getDeviceId()
+{
+    uint8_t mac[6];
+    esp_err_t ret = esp_efuse_mac_get_default(mac);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to get MAC address: %s", esp_err_to_name(ret));
+        return "";
+    }
+
+    char deviceId[18]; // Format: XX:XX:XX:XX:XX:XX + null terminator
+    snprintf(deviceId, sizeof(deviceId), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    ESP_LOGI(TAG, "Device ID: %s", deviceId);
+    return std::string(deviceId);
 }
