@@ -240,11 +240,11 @@ void Application::run_normalized_inference()
             collected_data[i * kNumFeaturesPerStep + j] = normalized_data[i][j];
         }
     }
-
+    float *input_data = preprocess(collected_data, 100);
     // 现在使用归一化后的数据执行推理
     for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++)
     {
-        input->data.f[i] = collected_data[i];
+        input->data.f[i] = input_data[i];
     }
 
     // 执行推理

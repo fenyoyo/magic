@@ -24,4 +24,8 @@ limitations under the License.
 extern const unsigned char person_detect_model_data[];
 extern const int person_detect_model_data_len;
 
+extern const float scaler_mean[];
+extern const float scaler_scale[];
+extern const int scaler_mean_size;
+extern const int scaler_scale_size;
 #endif // TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_PERSON_DETECT_MODEL_DATA_H_

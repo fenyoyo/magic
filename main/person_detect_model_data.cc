@@ -1529,3 +1529,10 @@ alignas(8) const unsigned char person_detect_model_data[] = {
 // 模型大小
 
 const int person_detect_model_data_len = 18272;
+
+// Scaler 参数（用于特征标准化：normalized = (x - mean) / scale）
+const float scaler_mean[] = {6738.02181464f, 2602.00717565f, 14503.20862202f, 42.19305113f, -159.24302794f, -82.53917777f};
+const int scaler_mean_size = 6;
+
+const float scaler_scale[] = {7323.37674232f, 10585.98894672f, 11221.35128246f, 703.36653546f, 2038.94581678f, 1897.58458898f};
+const int scaler_scale_size = 6;
