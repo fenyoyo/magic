@@ -11,6 +11,7 @@
 #include "tensorflow/lite/micro/micro_log.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "time_series_normalizer.h"
 
 class Application
 {
@@ -39,6 +40,7 @@ public:
     void onMQTTConnection(bool connected);
     void onMQTTError(int error_type, void *error_data);
     void run_inference();
+    void run_normalized_inference();
 
     const tflite::Model *model = nullptr;
     tflite::MicroInterpreter *interpreter = nullptr;

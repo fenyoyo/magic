@@ -131,6 +131,64 @@ void Application::run_inference()
     collected_data_index = 0;
 }
 
+// 新增函数：使用时间序列归一化处理数据并执行推理
+void Application::run_normalized_inference()
+{
+    // 构建当前收集的数据为二维向量格式
+    std::vector<std::vector<float>> raw_data(collected_data_index);
+    for (int i = 0; i < collected_data_index; i++) {
+        raw_data[i].resize(kNumFeaturesPerStep);
+        for (int j = 0; j < kNumFeaturesPerStep; j++) {
+            raw_data[i][j] = collected_data[i * kNumFeaturesPerStep + j];
+        }
+    }
+
+    // 使用时间序列归一化函数将数据标准化为目标长度
+    std::vector<std::vector<float>> normalized_data = 
+        normalize_mpu6050_data(raw_data, kNumTimeSteps);
+
+    // 将归一化后的数据复制回模型输入张量
+    for (int i = 0; i < kNumTimeSteps; i++) {
+        for (int j = 0; j < kNumFeaturesPerStep; j++) {
+            collected_data[i * kNumFeaturesPerStep + j] = normalized_data[i][j];
+        }
+    }
+
+    // 现在使用归一化后的数据执行推理
+    for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++)
+    {
+        input->data.f[i] = collected_data[i];
+    }
+
+    // 执行推理
+    TfLiteStatus invoke_status = interpreter->Invoke();
+    if (invoke_status != kTfLiteOk)
+    {
+        ESP_LOGE(TAG, "推理失败");
+        return;
+    }
+
+    // 获取结果（最大概率）
+    float max_score = -1.0f;
+    int predicted_class = 0;
+    ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
+    for (int i = 0; i < output->dims->data[1]; i++)
+    {
+        float score = output->data.f[i];
+        ESP_LOGI(TAG, "score[%d] = %.4f", i, score);
+        if (score > max_score)
+        {
+            max_score = score;
+            predicted_class = i;
+        }
+    }
+
+    ESP_LOGI(TAG, "预测结果：类别 %d (置信度：%.4f)", predicted_class, max_score);
+
+    // 重置数据收集索引
+    collected_data_index = 0;
+}
+
 void Application::mpu6050(void *pvParameters)
 {
     // Initialize mpu6050
@@ -272,27 +330,11 @@ void Application::mpu6050(void *pvParameters)
             Application &app_instance = Application::getInstance();
             if (app_instance.collected_data_index > 0)
             {
-                ESP_LOGI(TAG, "Executing inference with %d samples", app_instance.collected_data_index);
+                ESP_LOGI(TAG, "Executing normalized inference with %d samples", app_instance.collected_data_index);
 
-                // 如果收集的数据不足，用最后的数据填充剩余空间
-                if (app_instance.collected_data_index < app_instance.kNumTimeSteps)
-                {
-                    ESP_LOGW(TAG, "Insufficient data collected (%d/%d), padding with last values",
-                             app_instance.collected_data_index, app_instance.kNumTimeSteps);
-                    for (int i = app_instance.collected_data_index; i < app_instance.kNumTimeSteps; i++)
-                    {
-                        // 使用最后一个有效数据点填充
-                        for (int j = 0; j < app_instance.kNumFeaturesPerStep; j++)
-                        {
-                            app_instance.collected_data[i * app_instance.kNumFeaturesPerStep + j] =
-                                app_instance.collected_data[(app_instance.collected_data_index - 1) * app_instance.kNumFeaturesPerStep + j];
-                        }
-                    }
-                    app_instance.collected_data_index = app_instance.kNumTimeSteps;
-                }
-
-                // 执行推理
-                app.run_inference();
+                // 使用时间序列归一化函数处理数据并执行推理
+                // 这样可以处理任意长度的数据序列，并将其标准化为目标长度
+                app.run_normalized_inference();
             }
             else
             {
