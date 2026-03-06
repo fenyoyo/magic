@@ -22,16 +22,14 @@
 #include "MPU6050_6Axis_MotionApps20.h"
 
 #include "ssd1306.h"
+#include "time_series_normalizer.h"
 
 #define TAG "Application"
-
-constexpr int Application::kTensorArenaSize; // 只需要声明，不需要再赋值
 
 #define GYRO_STREAM_MS 20
 
 /** 陀螺仪 MQTT 发布主题 */
 /** publish 失败（队列满）时等待时间，让已排队消息发完 */
-#define MQTT_BACKPRESSURE_MS 30
 #define OLED_UPDATE_MS 100
 
 #define RAD_TO_DEG (180.0 / M_PI)
@@ -174,132 +172,6 @@ void Application::publish_inference_result_with_all_scores(int predicted_class, 
     }
 }
 
-// 辅助函数：执行模型推理
-void Application::run_inference()
-{
-    // Application &app = Application::getInstance();
-
-    // 将收集的数据复制到模型输入张量
-    for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++)
-    {
-        input->data.f[i] = collected_data[i];
-    }
-
-    // 执行推理
-    TfLiteStatus invoke_status = interpreter->Invoke();
-    if (invoke_status != kTfLiteOk)
-    {
-        ESP_LOGE(TAG, "推理失败");
-        return;
-    }
-
-    // 获取结果（最大概率）
-    float max_score = -1.0f;
-    int predicted_class = 0;
-    ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
-    for (int i = 0; i < output->dims->data[1]; i++)
-    {
-        float score = output->data.f[i];
-        ESP_LOGI(TAG, "score[%d] = %.4f", i, score);
-        if (score > max_score)
-        {
-            max_score = score;
-            predicted_class = i;
-        }
-    }
-
-    ESP_LOGI(TAG, "预测结果：类别 %d (置信度：%.4f)", predicted_class, max_score);
-
-    // 重置数据收集索引
-    collected_data_index = 0;
-}
-
-// 新增函数：使用时间序列归一化处理数据并执行推理
-void Application::run_normalized_inference()
-{
-    // 构建当前收集的数据为二维向量格式
-    std::vector<std::vector<float>> raw_data(collected_data_index);
-    for (int i = 0; i < collected_data_index; i++)
-    {
-        raw_data[i].resize(kNumFeaturesPerStep);
-        for (int j = 0; j < kNumFeaturesPerStep; j++)
-        {
-            raw_data[i][j] = collected_data[i * kNumFeaturesPerStep + j];
-        }
-    }
-
-    // 使用时间序列归一化函数将数据标准化为目标长度
-    std::vector<std::vector<float>> normalized_data =
-        normalize_mpu6050_data(raw_data, kNumTimeSteps);
-
-    // 将归一化后的数据复制回模型输入张量
-    for (int i = 0; i < kNumTimeSteps; i++)
-    {
-        for (int j = 0; j < kNumFeaturesPerStep; j++)
-        {
-            collected_data[i * kNumFeaturesPerStep + j] = normalized_data[i][j];
-        }
-    }
-    float *input_data = preprocess(collected_data, 100);
-
-    // // 打印预处理后的input_data (完整版 - 可选)
-    // #ifdef PRINT_FULL_INPUT_DATA
-    // ESP_LOGI(TAG, "Preprocessed input_data (all %d values):", kNumTimeSteps * kNumFeaturesPerStep);
-    // for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++) {
-    //     ESP_LOGI(TAG, "  input_data[%d] = %.6f", i, input_data[i]);
-    // }
-    // #else
-    // // 打印预处理后的input_data (仅前20个值)
-    // ESP_LOGI(TAG, "Preprocessed input_data (first 20 values):");
-    // for (int i = 0; i < 20 && i < kNumTimeSteps * kNumFeaturesPerStep; i++) {
-    //     ESP_LOGI(TAG, "  input_data[%d] = %.6f", i, input_data[i]);
-    // }
-    // if (kNumTimeSteps * kNumFeaturesPerStep > 20) {
-    //     ESP_LOGI(TAG, "  ... (showing only first 20 of %d total values)", kNumTimeSteps * kNumFeaturesPerStep);
-    // }
-    // #endif
-
-    // 现在使用归一化后的数据执行推理
-    for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++)
-    {
-        input->data.f[i] = input_data[i];
-    }
-
-    // 执行推理
-    TfLiteStatus invoke_status = interpreter->Invoke();
-    if (invoke_status != kTfLiteOk)
-    {
-        ESP_LOGE(TAG, "推理失败");
-        return;
-    }
-
-    // 获取所有类别的概率
-    int num_classes = output->dims->data[1];
-    float scores[32]; // 假设最多有32个类别，根据实际情况调整
-    float max_score = -1.0f;
-    int predicted_class = 0;
-
-    ESP_LOGI(TAG, "输出类别数：%d", num_classes);
-    for (int i = 0; i < num_classes; i++)
-    {
-        scores[i] = output->data.f[i];
-        ESP_LOGI(TAG, "score[%d] = %.4f", i, scores[i]);
-        if (scores[i] > max_score)
-        {
-            max_score = scores[i];
-            predicted_class = i;
-        }
-    }
-
-    ESP_LOGI(TAG, "预测结果：类别 %d (置信度：%.4f)", predicted_class, max_score);
-
-    // 通过MQTT发布推理结果（包含所有类别的概率）
-    publish_inference_result_with_all_scores(predicted_class, max_score, scores, num_classes);
-
-    // 重置数据收集索引
-    collected_data_index = 0;
-}
-
 void Application::mpu6050(void *pvParameters)
 {
     // Initialize mpu6050
@@ -418,7 +290,7 @@ void Application::mpu6050(void *pvParameters)
                         app.collected_data_index++;
 
                         // 如果已收集足够的数据，停止收集
-                        if (app.collected_data_index >= app.kNumTimeSteps)
+                        if (app.collected_data_index >= app.kNumTimeSteps * 2)
                         {
                             ESP_LOGI(TAG, "Collected enough data for inference (%d samples)", app.collected_data_index);
                             app.collecting_data = false;
@@ -439,29 +311,42 @@ void Application::mpu6050(void *pvParameters)
 
             // 按钮释放后，如果收集到了足够的数据，则执行推理
             Application &app_instance = Application::getInstance();
-            if (app_instance.collected_data_index > 0)
+            if (app_instance.collected_data_index > 50)
             {
                 ESP_LOGI(TAG, "Executing normalized inference with %d samples", app_instance.collected_data_index);
 
                 // 使用时间序列归一化函数处理数据并执行推理
                 // 这样可以处理任意长度的数据序列，并将其标准化为目标长度
-                app.run_normalized_inference();
+                app_instance.inference_engine.run_normalized_inference(
+                    app_instance.collected_data,
+                    app_instance.collected_data_index,
+                    app_instance.kNumTimeSteps,
+                    app_instance.kNumFeaturesPerStep);
+
+                // 获取推理结果并发布
+                int predicted_class = app_instance.inference_engine.get_predicted_class();
+                float confidence = app_instance.inference_engine.get_confidence();
+                const float *all_scores = app_instance.inference_engine.get_all_scores();
+                int num_classes = app_instance.inference_engine.get_num_classes();
+
+                app_instance.publish_inference_result_with_all_scores(predicted_class, confidence,
+                                                                      const_cast<float *>(all_scores), num_classes);
             }
             else
             {
-                ESP_LOGW(TAG, "No data collected, skipping inference");
+                ESP_LOGW(TAG, "data not enough, collected %d samples", app_instance.collected_data_index);
             }
         }
 
-        if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
-        {
-            // 在非数据收集模式下，仍然可以获取数据用于其他用途（如显示）
-        }
+        // if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
+        // {
+        //     // 在非数据收集模式下，仍然可以获取数据用于其他用途（如显示）
+        // }
 
         // Best result is to match with DMP refresh rate
         // Its last value in components/MPU6050/MPU6050_6Axis_MotionApps20.h file line 310
         // Now its 0x13, which means DMP is refreshed with 10Hz rate
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 
     // Never reach here
@@ -583,67 +468,13 @@ void Application::Start()
     xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);
     xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL);
 
-    model = tflite::GetModel(person_detect_model_data);
-    if (model->version() != TFLITE_SCHEMA_VERSION)
+    // 初始化推理引擎
+    if (!inference_engine.initialize())
     {
-        MicroPrintf("Model provided is schema version %d not equal to supported "
-                    "version %d.",
-                    model->version(), TFLITE_SCHEMA_VERSION);
+        ESP_LOGE(TAG, "推理引擎初始化失败");
         return;
     }
-    // ESP_LOGI(TAG, "Model schema version: %lu", tensor_arena);
-    // if (tensor_arena == NULL)
-    // {
-    //     tensor_arena = (uint8_t *)heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    // }
-    // if (tensor_arena == NULL)
-    // {
-    //     printf("Couldn't allocate memory of %d bytes\n", kTensorArenaSize);
-    //     return;
-    // }
-
-    // static tflite::MicroMutableOpResolver<5> micro_op_resolver;
-    // micro_op_resolver.AddAveragePool2D();
-    // micro_op_resolver.AddConv2D();
-    // micro_op_resolver.AddDepthwiseConv2D();
-    // micro_op_resolver.AddReshape();
-    // micro_op_resolver.AddSoftmax();
-
-    static tflite::MicroMutableOpResolver<8> micro_op_resolver;
-    micro_op_resolver.AddExpandDims();     // 输入 reshape
-    micro_op_resolver.AddConv2D();         // Conv1D 层
-    micro_op_resolver.AddAveragePool2D();  // Max/GlobalPooling 层
-    micro_op_resolver.AddMaxPool2D();      // 输入 reshape 用
-    micro_op_resolver.AddReshape();        // 输入 reshape 用
-    micro_op_resolver.AddMean();           // Dense 层
-    micro_op_resolver.AddFullyConnected(); // Dense 层
-    micro_op_resolver.AddSoftmax();        // 输出 softmax
-
-    // Build an interpreter to run the model with.
-    // NOLINTNEXTLINE(runtime-global-variables)
-    static tflite::MicroInterpreter static_interpreter(
-        model, micro_op_resolver, tensor_arena, kTensorArenaSize);
-    interpreter = &static_interpreter;
-
-    // Allocate memory from the tensor_arena for the model's tensors.
-    TfLiteStatus allocate_status = interpreter->AllocateTensors();
-    if (allocate_status != kTfLiteOk)
-    {
-        MicroPrintf("AllocateTensors() failed");
-        return;
-    }
-    input = interpreter->input(0);
-    output = interpreter->output(0);
-    // 打印模型信息
-    // ESP_LOGI(TAG, "模型初始化成功!");
-    // ESP_LOGI(TAG, "输入形状：");
-    // for (int i = 0; i < input->dims->size; i++)
-    // {
-    //     ESP_LOGI(TAG, "  维度 %d: %d", i, input->dims->data[i]);
-    // }
-    // ESP_LOGI(TAG, "输出类别数：%d", output->dims->data[1]);
-    ESP_LOGI(TAG, "张量竞技场使用：%zu / %d 字节",
-             interpreter->arena_used_bytes(), kTensorArenaSize);
+    ESP_LOGI(TAG, "推理引擎初始化成功");
 
     // 初始化数据收集索引
     getInstance().collected_data_index = 0;
