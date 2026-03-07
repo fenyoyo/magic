@@ -5,7 +5,6 @@
 #include <cstdint>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "ssd1306.h"
 #include "inference_engine.h"
 #include "time_series_normalizer.h"
 

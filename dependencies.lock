@@ -39,32 +39,6 @@ dependencies:
     - esp32s2
     - esp32s3
     version: 2.1.1
-  esp-idf-lib/mpu6050:
-    component_hash: 2d4c6db42322162aeadded002cb811028f05115d969e143bad6470822cc75a8a
-    dependencies:
-    - name: esp-idf-lib/esp_idf_lib_helpers
-      registry_url: https://components.espressif.com
-      require: private
-      version: '*'
-    - name: esp-idf-lib/i2cdev
-      registry_url: https://components.espressif.com
-      require: private
-      version: '*'
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    targets:
-    - esp32
-    - esp32c2
-    - esp32c3
-    - esp32c5
-    - esp32c6
-    - esp32c61
-    - esp32h2
-    - esp32p4
-    - esp32s2
-    - esp32s3
-    version: 2.1.9
   espressif/cjson:
     component_hash: 002c6d1872ee4c97d333938ebe107a29841cc847f9de89e676714bd2844057ea
     dependencies:
@@ -99,16 +73,6 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.3.5
-  espressif/ssd1306:
-    component_hash: 102cfc05b1b304862fa3f494e9dd955844bcc5f6cb16596e4ca5df3e6bf9fd0d
-    dependencies:
-    - name: idf
-      require: private
-      version: '>=4.0'
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 1.0.5~1
   idf:
     source:
       type: idf
@@ -116,10 +80,8 @@ dependencies:
 direct_dependencies:
 - esp-idf-lib/esp_idf_lib_helpers
 - esp-idf-lib/i2cdev
-- esp-idf-lib/mpu6050
 - espressif/cjson
 - espressif/esp-tflite-micro
-- espressif/ssd1306
-manifest_hash: 896a43bb45d9c2901ec645261581dd479d1cb3bd0a07c58b3f791cf98b62b856
+manifest_hash: e4fb94b381236d99304a6bafb0f2ffb9980f2f245fd7338a619b1c412528728f
 target: esp32s3
 version: 2.0.0

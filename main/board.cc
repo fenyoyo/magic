@@ -19,17 +19,17 @@
 Board::Board()
 {
     ESP_LOGI(TAG, "Board init");
-    m_oled = nullptr;
+    // m_oled = nullptr;
     getDeviceId();
 }
 
 Board::~Board()
 {
-    if (m_oled)
-    {
-        delete m_oled;
-        m_oled = nullptr;
-    }
+    // if (m_oled)
+    // {
+    //     delete m_oled;
+    //     m_oled = nullptr;
+    // }
 }
 
 void Board::StartNetwork()
@@ -88,22 +88,22 @@ void Board::SetButton()
     gpio_set_level(LED_GPIO_R, 0);
 }
 
-bool Board::initOLED()
-{
-    if (m_oled == nullptr)
-    {
-        m_oled = new OLED();
-        if (!m_oled->initialize())
-        {
-            ESP_LOGE(TAG, "Failed to initialize OLED");
-            delete m_oled;
-            m_oled = nullptr;
-            return false;
-        }
-        ESP_LOGI(TAG, "OLED initialized successfully");
-    }
-    return true;
-}
+// bool Board::initOLED()
+// {
+//     if (m_oled == nullptr)
+//     {
+//         m_oled = new OLED();
+//         if (!m_oled->initialize())
+//         {
+//             ESP_LOGE(TAG, "Failed to initialize OLED");
+//             delete m_oled;
+//             m_oled = nullptr;
+//             return false;
+//         }
+//         ESP_LOGI(TAG, "OLED initialized successfully");
+//     }
+//     return true;
+// }
 
 std::string Board::getDeviceId()
 {

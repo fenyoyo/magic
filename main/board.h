@@ -1,7 +1,6 @@
 #ifndef _BOARD_H__
 #define _BOARD_H__
 
-#include "oled.h"
 #include <string>
 
 /** 按钮 GPIO：按下为低电平（接 GND），松开为高电平（内部上拉） */
@@ -18,7 +17,7 @@ private:
     Board &operator=(const Board &) = delete;
 
     int s_retry_num = 0;
-    OLED *m_oled;
+    // OLED *m_oled;
 
 public:
     static Board &getInstance()
@@ -33,8 +32,8 @@ public:
     void SetButton();
 
     // OLED相关方法
-    bool initOLED();
-    OLED *getOLED() { return m_oled; }
+    // bool initOLED();
+    // OLED *getOLED() { return m_oled; }
 
     // 设备ID相关方法
     std::string getDeviceId();

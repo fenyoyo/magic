@@ -5,14 +5,12 @@
 #include <cstdint>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "ssd1306.h"
 #include "person_detect_model_data.h"
 
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_log.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-
 
 class InferenceEngine
 {
@@ -22,7 +20,7 @@ private:
     TfLiteTensor *input = nullptr;
     TfLiteTensor *output = nullptr;
 
-    static constexpr int kTensorArenaSize = 200 * 1024;
+    static constexpr int kTensorArenaSize = 150 * 1024;
     uint8_t tensor_arena[kTensorArenaSize];
 
     // 预处理函数

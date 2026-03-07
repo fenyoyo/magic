@@ -21,7 +21,7 @@
 // #include "MPU6050.h" // not necessary if using MotionApps include file
 #include "MPU6050_6Axis_MotionApps20.h"
 
-#include "ssd1306.h"
+// #include "ssd1306.h"
 #include "time_series_normalizer.h"
 
 #define TAG "Application"
@@ -408,6 +408,7 @@ void Application::Start()
     xQueueTransOled = xQueueCreate(10, sizeof(POSE_a));
 
     configASSERT(xQueueTransOled);
+
     // Start imu task
     xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);
     xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL);
