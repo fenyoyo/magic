@@ -6,59 +6,53 @@
 /* Includes */
 #include "gatt_svc.h"
 #include "common.h"
-#include "heart_rate.h"
 
 /* Private function declarations */
-static int heart_rate_chr_access(uint16_t conn_handle, uint16_t attr_handle,
-                                 struct ble_gatt_access_ctxt *ctxt, void *arg);
-static int led_chr_access(uint16_t conn_handle, uint16_t attr_handle,
-                          struct ble_gatt_access_ctxt *ctxt, void *arg);
-
-/* Private variables */
-/* Heart rate service */
-static const ble_uuid16_t heart_rate_svc_uuid = BLE_UUID16_INIT(0x180D);
-
-static uint8_t heart_rate_chr_val[2] = {0};
-static uint16_t heart_rate_chr_val_handle;
-static const ble_uuid16_t heart_rate_chr_uuid = BLE_UUID16_INIT(0x2A37);
-
-static uint16_t heart_rate_chr_conn_handle = 0;
-static bool heart_rate_chr_conn_handle_inited = false;
-static bool heart_rate_ind_status = false;
+static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
+                           struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 /* Automation IO service */
 static const ble_uuid16_t auto_io_svc_uuid = BLE_UUID16_INIT(0x1815);
-static uint16_t led_chr_val_handle;
-static const ble_uuid128_t led_chr_uuid =
-    BLE_UUID128_INIT(0x23, 0xd1, 0xbc, 0xea, 0x5f, 0x78, 0x23, 0x15, 0xde, 0xef,
-                     0x12, 0x12, 0x25, 0x15, 0x00, 0x00);
+static uint16_t ssid_chr_val_handle;
+static const ble_uuid16_t ssid_chr_uuid = BLE_UUID16_INIT(0x2A31);
+static uint16_t password_chr_val_handle;
+static const ble_uuid16_t password_chr_uuid = BLE_UUID16_INIT(0x2A32);
+static uint16_t connect_chr_val_handle;
+static const ble_uuid16_t connect_chr_uuid = BLE_UUID16_INIT(0x2A33);
 
+static uint16_t connect_status_chr_val_handle;
+static const ble_uuid16_t connect_status_chr_uuid = BLE_UUID16_INIT(0x2A21);
+static uint16_t mqtt_status_chr_val_handle;
+static const ble_uuid16_t mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
 /* GATT services table */
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
-    /* Heart rate service */
-    {.type = BLE_GATT_SVC_TYPE_PRIMARY,
-     .uuid = &heart_rate_svc_uuid.u,
-     .characteristics =
-         (struct ble_gatt_chr_def[]){
-             {/* Heart rate characteristic */
-              .uuid = &heart_rate_chr_uuid.u,
-              .access_cb = heart_rate_chr_access,
-              .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_INDICATE,
-              .val_handle = &heart_rate_chr_val_handle},
-             {
-                 0, /* No more characteristics in this service. */
-             }}},
 
     /* Automation IO service */
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &auto_io_svc_uuid.u,
         .characteristics =
-            (struct ble_gatt_chr_def[]){/* LED characteristic */
-                                        {.uuid = &led_chr_uuid.u,
-                                         .access_cb = led_chr_access,
+            (struct ble_gatt_chr_def[]){/* WiFi SSID characteristic */
+                                        {.uuid = &ssid_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
                                          .flags = BLE_GATT_CHR_F_WRITE,
-                                         .val_handle = &led_chr_val_handle},
+                                         .val_handle = &ssid_chr_val_handle},
+                                        {.uuid = &password_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_WRITE,
+                                         .val_handle = &password_chr_val_handle},
+                                        {.uuid = &connect_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_WRITE,
+                                         .val_handle = &connect_chr_val_handle},
+                                        {.uuid = &connect_status_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_READ,
+                                         .val_handle = &connect_status_chr_val_handle},
+                                        {.uuid = &mqtt_status_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_READ,
+                                         .val_handle = &mqtt_status_chr_val_handle},
                                         {0}},
     },
 
@@ -67,66 +61,34 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
     },
 };
 
-/* Private functions */
-static int heart_rate_chr_access(uint16_t conn_handle, uint16_t attr_handle,
-                                 struct ble_gatt_access_ctxt *ctxt, void *arg)
+static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
+                           struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     /* Local variables */
     int rc;
 
     /* Handle access events */
-    /* Note: Heart rate characteristic is read only */
+    /* Note: WiFi SSID characteristic is write only */
     switch (ctxt->op)
     {
-
-    /* Read characteristic event */
     case BLE_GATT_ACCESS_OP_READ_CHR:
-        /* Verify connection handle */
-        if (conn_handle != BLE_HS_CONN_HANDLE_NONE)
+        if (attr_handle == connect_status_chr_val_handle)
         {
-            ESP_LOGI(TAG, "characteristic read; conn_handle=%d attr_handle=%d",
-                     conn_handle, attr_handle);
-        }
-        else
-        {
-            ESP_LOGI(TAG, "characteristic read by nimble stack; attr_handle=%d",
-                     attr_handle);
+            // TODO 读取 WiFi 连接状态
+            uint8_t connect_status = 1; // 0: 未连接，1: 已连接
+            rc = os_mbuf_append(ctxt->om, &connect_status,
+                                sizeof(connect_status));
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 
-        /* Verify attribute handle */
-        if (attr_handle == heart_rate_chr_val_handle)
+        if (attr_handle == mqtt_status_chr_val_handle)
         {
-            /* Update access buffer value */
-            heart_rate_chr_val[1] = get_heart_rate();
-            rc = os_mbuf_append(ctxt->om, &heart_rate_chr_val,
-                                sizeof(heart_rate_chr_val));
+            // TODO 读取 MQTT 连接状态
+            uint8_t mqtt_status = 1; // 0: 未连接，1: 已连接
+            rc = os_mbuf_append(ctxt->om, &mqtt_status, sizeof(mqtt_status));
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
         goto error;
-
-    /* Unknown event */
-    default:
-        goto error;
-    }
-
-error:
-    ESP_LOGE(
-        TAG,
-        "unexpected access operation to heart rate characteristic, opcode: %d",
-        ctxt->op);
-    return BLE_ATT_ERR_UNLIKELY;
-}
-
-static int led_chr_access(uint16_t conn_handle, uint16_t attr_handle,
-                          struct ble_gatt_access_ctxt *ctxt, void *arg)
-{
-    /* Local variables */
-    int rc;
-
-    /* Handle access events */
-    /* Note: LED characteristic is write only */
-    switch (ctxt->op)
-    {
 
     /* Write characteristic event */
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
@@ -144,26 +106,43 @@ static int led_chr_access(uint16_t conn_handle, uint16_t attr_handle,
         }
 
         /* Verify attribute handle */
-        if (attr_handle == led_chr_val_handle)
+        if (attr_handle == ssid_chr_val_handle)
         {
-            /* Verify access buffer length */
-            if (ctxt->om->om_len == 1)
-            {
-                /* Turn the LED on or off according to the operation bit */
-                if (ctxt->om->om_data[0])
-                {
-                    ESP_LOGI(TAG, "led turned on!");
-                }
-                else
-                {
-                    ESP_LOGI(TAG, "led turned off!");
-                }
+            int len = ctxt->om->om_len;
+            if (len == 0 || len > 32)
+            { // WiFi SSID 最大 32 字节
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
             }
-            else
-            {
-                goto error;
+
+            char ssid[33] = {0}; // 多一个 '\0'
+            os_mbuf_copydata(ctxt->om, 0, len, ssid);
+
+            ESP_LOGI(TAG, "Received WiFi SSID via BLE: %s", ssid);
+
+            return 0;
+        }
+        /* Verify attribute handle */
+        if (attr_handle == password_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+            if (len == 0 || len > 32)
+            { // WiFi SSID 最大 32 字节
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
             }
-            return rc;
+
+            char password[33] = {0}; // 多一个 '\0'
+            os_mbuf_copydata(ctxt->om, 0, len, password);
+
+            ESP_LOGI(TAG, "Received WiFi Password via BLE: %s", password);
+
+            return 0;
+        }
+        if (attr_handle == connect_chr_val_handle)
+        {
+            // TODO 根据接收到的 SSID 和 Password 连接 WiFi
+            ESP_LOGI(TAG, "Received connect command via BLE, connecting to WiFi...");
+
+            return 0;
         }
         goto error;
 
@@ -174,20 +153,9 @@ static int led_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 
 error:
     ESP_LOGE(TAG,
-             "unexpected access operation to led characteristic, opcode: %d",
+             "unexpected access operation to WiFi SSID characteristic, opcode: %d",
              ctxt->op);
     return BLE_ATT_ERR_UNLIKELY;
-}
-
-/* Public functions */
-void send_heart_rate_indication(void)
-{
-    if (heart_rate_ind_status && heart_rate_chr_conn_handle_inited)
-    {
-        ble_gatts_indicate(heart_rate_chr_conn_handle,
-                           heart_rate_chr_val_handle);
-        ESP_LOGI(TAG, "heart rate indication sent!");
-    }
 }
 
 /*
@@ -255,13 +223,6 @@ void gatt_svr_subscribe_cb(struct ble_gap_event *event)
     }
 
     /* Check attribute handle */
-    if (event->subscribe.attr_handle == heart_rate_chr_val_handle)
-    {
-        /* Update heart rate subscription status */
-        heart_rate_chr_conn_handle = event->subscribe.conn_handle;
-        heart_rate_chr_conn_handle_inited = true;
-        heart_rate_ind_status = event->subscribe.cur_indicate;
-    }
 }
 
 /*

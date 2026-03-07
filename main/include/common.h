@@ -32,6 +32,6 @@
 
 /* Defines */
 #define TAG "NimBLE_GATT_Server"
-#define DEVICE_NAME "MAGIC Wand"
+#define DEVICE_NAME "AMAGIC Wand"
 
 #endif // COMMON_H
