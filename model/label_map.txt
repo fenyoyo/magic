@@ -1,8 +1,0 @@
-left-right:0
-letter_alpha:1
-letter_m:2
-letter_r:3
-letter_w:4
-lightning:5
-right-left:6
-triangle:7
