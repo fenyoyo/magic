@@ -15,6 +15,8 @@ static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int magic_learning_chr_access(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 /* NVS storage helper functions */
 static esp_err_t store_wifi_ssid(const char *ssid);
@@ -50,6 +52,11 @@ static uint16_t mqtt_username_chr_val_handle;
 static const ble_uuid16_t mqtt_username_chr_uuid = BLE_UUID16_INIT(0x2B02); // Custom UUID for MQTT Username
 static uint16_t mqtt_password_chr_val_handle;
 static const ble_uuid16_t mqtt_password_chr_uuid = BLE_UUID16_INIT(0x2B03); // Custom UUID for MQTT Password
+
+/* Magic Learning service */
+static const ble_uuid16_t magic_learning_svc_uuid = BLE_UUID16_INIT(0x1890); // Custom UUID for Magic Learning Service
+static uint16_t magic_enable_chr_val_handle;
+static const ble_uuid16_t magic_enable_chr_uuid = BLE_UUID16_INIT(0x2C01); // Custom UUID for Magic Enable characteristic
 /* GATT services table */
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
 
@@ -106,6 +113,22 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                     .access_cb = mqtt_chr_access,
                     .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
                     .val_handle = &mqtt_password_chr_val_handle},
+                {0} // End of characteristics array
+            },
+    },
+
+    /* Magic Learning service */
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &magic_learning_svc_uuid.u,
+        .characteristics =
+            (struct ble_gatt_chr_def[]){
+                /* Magic Enable characteristic */
+                {
+                    .uuid = &magic_enable_chr_uuid.u,
+                    .access_cb = magic_learning_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .val_handle = &magic_enable_chr_val_handle},
                 {0} // End of characteristics array
             },
     },
@@ -429,6 +452,85 @@ static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 error:
     ESP_LOGE(TAG,
              "unexpected access operation to MQTT characteristic, opcode: %d",
+             ctxt->op);
+    return BLE_ATT_ERR_UNLIKELY;
+}
+
+/* Magic Learning characteristic access callback */
+static int magic_learning_chr_access(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    /* Local variables */
+    int rc;
+    static bool magic_enabled = false; // 存储魔法启用状态
+
+    /* Handle access events */
+    switch (ctxt->op)
+    {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+        /* Handle Magic Enable characteristic */
+        goto error;
+
+    /* Write characteristic event */
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+        /* Verify connection handle */
+        if (conn_handle != BLE_HS_CONN_HANDLE_NONE)
+        {
+            ESP_LOGI(TAG, "Magic learning characteristic write; conn_handle=%d attr_handle=%d",
+                     conn_handle, attr_handle);
+        }
+        else
+        {
+            ESP_LOGI(TAG,
+                     "Magic learning characteristic write by nimble stack; attr_handle=%d",
+                     attr_handle);
+        }
+
+        /* Handle Magic Enable characteristic */
+        if (attr_handle == magic_enable_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+            if (len != sizeof(bool))
+            { // 布尔值应该正好是一个字节
+                ESP_LOGE(TAG, "Invalid length for boolean value: %d", len);
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            // 从请求中读取布尔值
+            bool new_magic_state;
+            os_mbuf_copydata(ctxt->om, 0, len, &new_magic_state);
+
+            // 更新魔法启用状态
+            magic_enabled = new_magic_state;
+
+            ESP_LOGI(TAG, "Magic learning state updated via BLE: %s",
+                     magic_enabled ? "ENABLED" : "DISABLED");
+
+            // 可以在这里添加实际的魔法学习启动/停止逻辑
+            if (magic_enabled)
+            {
+                ESP_LOGI(TAG, "Starting magic learning process...");
+                // 在这里可以添加启动魔法学习的代码
+            }
+            else
+            {
+                ESP_LOGI(TAG, "Stopping magic learning process...");
+                // 在这里可以添加停止魔法学习的代码
+            }
+
+            return 0;
+        }
+
+        goto error;
+
+    /* Unknown event */
+    default:
+        goto error;
+    }
+
+error:
+    ESP_LOGE(TAG,
+             "unexpected access operation to Magic Learning characteristic, opcode: %d",
              ctxt->op);
     return BLE_ATT_ERR_UNLIKELY;
 }
