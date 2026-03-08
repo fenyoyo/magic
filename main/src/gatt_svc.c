@@ -10,6 +10,8 @@
 /* Private function declarations */
 static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
+                           struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 /* Automation IO service */
 static const ble_uuid16_t auto_io_svc_uuid = BLE_UUID16_INIT(0x1815);
@@ -24,6 +26,15 @@ static uint16_t connect_status_chr_val_handle;
 static const ble_uuid16_t connect_status_chr_uuid = BLE_UUID16_INIT(0x2A21);
 static uint16_t mqtt_status_chr_val_handle;
 static const ble_uuid16_t mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
+
+/* MQTT Configuration service */
+static const ble_uuid16_t mqtt_config_svc_uuid = BLE_UUID16_INIT(0x1889); // Custom UUID for MQTT Configuration Service
+static uint16_t mqtt_server_addr_chr_val_handle;
+static const ble_uuid16_t mqtt_server_addr_chr_uuid = BLE_UUID16_INIT(0x2B01); // Custom UUID for MQTT Server Address
+static uint16_t mqtt_username_chr_val_handle;
+static const ble_uuid16_t mqtt_username_chr_uuid = BLE_UUID16_INIT(0x2B02); // Custom UUID for MQTT Username
+static uint16_t mqtt_password_chr_val_handle;
+static const ble_uuid16_t mqtt_password_chr_uuid = BLE_UUID16_INIT(0x2B03); // Custom UUID for MQTT Password
 /* GATT services table */
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
 
@@ -54,6 +65,37 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                                          .flags = BLE_GATT_CHR_F_READ,
                                          .val_handle = &mqtt_status_chr_val_handle},
                                         {0}},
+    },
+
+    /* MQTT Configuration service */
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &mqtt_config_svc_uuid.u,
+        .characteristics =
+            (struct ble_gatt_chr_def[]){
+                /* MQTT Server Address characteristic */
+                {
+                    .uuid = &mqtt_server_addr_chr_uuid.u,
+                    .access_cb = mqtt_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE,
+                    .val_handle = &mqtt_server_addr_chr_val_handle
+                },
+                /* MQTT Username characteristic */
+                {
+                    .uuid = &mqtt_username_chr_uuid.u,
+                    .access_cb = mqtt_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE,
+                    .val_handle = &mqtt_username_chr_val_handle
+                },
+                /* MQTT Password characteristic */
+                {
+                    .uuid = &mqtt_password_chr_uuid.u,
+                    .access_cb = mqtt_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE,
+                    .val_handle = &mqtt_password_chr_val_handle
+                },
+                {0} // End of characteristics array
+            },
     },
 
     {
@@ -154,6 +196,113 @@ static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 error:
     ESP_LOGE(TAG,
              "unexpected access operation to WiFi SSID characteristic, opcode: %d",
+             ctxt->op);
+    return BLE_ATT_ERR_UNLIKELY;
+}
+
+/*
+ *  MQTT Configuration characteristic access callback
+ *      - Handles read/write operations for MQTT configuration
+ */
+static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
+                           struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    /* Local variables */
+    int rc;
+
+    /* Handle access events */
+    switch (ctxt->op)
+    {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+        // For now, we only support write operations for MQTT config
+        // Reading would return stored values if implemented
+        goto error;
+
+    /* Write characteristic event */
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+        /* Verify connection handle */
+        if (conn_handle != BLE_HS_CONN_HANDLE_NONE)
+        {
+            ESP_LOGI(TAG, "MQTT characteristic write; conn_handle=%d attr_handle=%d",
+                     conn_handle, attr_handle);
+        }
+        else
+        {
+            ESP_LOGI(TAG,
+                     "MQTT characteristic write by nimble stack; attr_handle=%d",
+                     attr_handle);
+        }
+
+        /* Handle MQTT Server Address characteristic */
+        if (attr_handle == mqtt_server_addr_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+            if (len == 0 || len > 255) // Max length for MQTT server address
+            {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            char server_addr[256] = {0};
+            os_mbuf_copydata(ctxt->om, 0, len, server_addr);
+
+            ESP_LOGI(TAG, "Received MQTT Server Address via BLE: %s", server_addr);
+
+            // TODO: Store the MQTT server address for later use
+            // For now, just log the received value
+
+            return 0;
+        }
+        
+        /* Handle MQTT Username characteristic */
+        if (attr_handle == mqtt_username_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+            if (len == 0 || len > 64) // Max length for username
+            {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            char username[65] = {0};
+            os_mbuf_copydata(ctxt->om, 0, len, username);
+
+            ESP_LOGI(TAG, "Received MQTT Username via BLE: %s", username);
+
+            // TODO: Store the MQTT username for later use
+            // For now, just log the received value
+
+            return 0;
+        }
+        
+        /* Handle MQTT Password characteristic */
+        if (attr_handle == mqtt_password_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+            if (len == 0 || len > 64) // Max length for password
+            {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            char password[65] = {0};
+            os_mbuf_copydata(ctxt->om, 0, len, password);
+
+            ESP_LOGI(TAG, "Received MQTT Password via BLE (length: %d)", len);
+
+            // TODO: Store the MQTT password for later use
+            // For now, just log the received value (not the actual password for security)
+
+            return 0;
+        }
+        
+        goto error;
+
+    /* Unknown event */
+    default:
+        goto error;
+    }
+
+error:
+    ESP_LOGE(TAG,
+             "unexpected access operation to MQTT characteristic, opcode: %d",
              ctxt->op);
     return BLE_ATT_ERR_UNLIKELY;
 }
