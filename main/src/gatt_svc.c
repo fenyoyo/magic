@@ -6,12 +6,27 @@
 /* Includes */
 #include "gatt_svc.h"
 #include "common.h"
+#include "nvs.h"
+#include "nvs_flash.h"
+#include "esp_log.h"
 
 /* Private function declarations */
 static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
                            struct ble_gatt_access_ctxt *ctxt, void *arg);
+
+/* NVS storage helper functions */
+static esp_err_t store_wifi_ssid(const char *ssid);
+static esp_err_t store_wifi_password(const char *password);
+static esp_err_t get_wifi_ssid(char *ssid, size_t *length);
+static esp_err_t get_wifi_password(char *password, size_t *length);
+static esp_err_t store_mqtt_addr(const char *server_addr);
+static esp_err_t store_mqtt_username(const char *username);
+static esp_err_t store_mqtt_password(const char *password);
+static esp_err_t get_mqtt_addr(char *server_addr, size_t *length);
+static esp_err_t get_mqtt_username(char *username, size_t *length);
+static esp_err_t get_mqtt_password(char *password, size_t *length);
 
 /* Automation IO service */
 static const ble_uuid16_t auto_io_svc_uuid = BLE_UUID16_INIT(0x1815);
@@ -29,8 +44,8 @@ static const ble_uuid16_t mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
 
 /* MQTT Configuration service */
 static const ble_uuid16_t mqtt_config_svc_uuid = BLE_UUID16_INIT(0x1889); // Custom UUID for MQTT Configuration Service
-static uint16_t mqtt_server_addr_chr_val_handle;
-static const ble_uuid16_t mqtt_server_addr_chr_uuid = BLE_UUID16_INIT(0x2B01); // Custom UUID for MQTT Server Address
+static uint16_t mqtt_addr_chr_val_handle;
+static const ble_uuid16_t mqtt_addr_chr_uuid = BLE_UUID16_INIT(0x2B01); // Custom UUID for MQTT Server Address
 static uint16_t mqtt_username_chr_val_handle;
 static const ble_uuid16_t mqtt_username_chr_uuid = BLE_UUID16_INIT(0x2B02); // Custom UUID for MQTT Username
 static uint16_t mqtt_password_chr_val_handle;
@@ -46,19 +61,19 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
             (struct ble_gatt_chr_def[]){/* WiFi SSID characteristic */
                                         {.uuid = &ssid_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
-                                         .flags = BLE_GATT_CHR_F_WRITE,
+                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
                                          .val_handle = &ssid_chr_val_handle},
                                         {.uuid = &password_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
-                                         .flags = BLE_GATT_CHR_F_WRITE,
+                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
                                          .val_handle = &password_chr_val_handle},
                                         {.uuid = &connect_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
-                                         .flags = BLE_GATT_CHR_F_WRITE,
+                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
                                          .val_handle = &connect_chr_val_handle},
                                         {.uuid = &connect_status_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
-                                         .flags = BLE_GATT_CHR_F_READ,
+                                         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
                                          .val_handle = &connect_status_chr_val_handle},
                                         {.uuid = &mqtt_status_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
@@ -75,25 +90,22 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
             (struct ble_gatt_chr_def[]){
                 /* MQTT Server Address characteristic */
                 {
-                    .uuid = &mqtt_server_addr_chr_uuid.u,
+                    .uuid = &mqtt_addr_chr_uuid.u,
                     .access_cb = mqtt_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE,
-                    .val_handle = &mqtt_server_addr_chr_val_handle
-                },
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .val_handle = &mqtt_addr_chr_val_handle},
                 /* MQTT Username characteristic */
                 {
                     .uuid = &mqtt_username_chr_uuid.u,
                     .access_cb = mqtt_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE,
-                    .val_handle = &mqtt_username_chr_val_handle
-                },
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .val_handle = &mqtt_username_chr_val_handle},
                 /* MQTT Password characteristic */
                 {
                     .uuid = &mqtt_password_chr_uuid.u,
                     .access_cb = mqtt_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE,
-                    .val_handle = &mqtt_password_chr_val_handle
-                },
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .val_handle = &mqtt_password_chr_val_handle},
                 {0} // End of characteristics array
             },
     },
@@ -110,7 +122,6 @@ static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
     int rc;
 
     /* Handle access events */
-    /* Note: WiFi SSID characteristic is write only */
     switch (ctxt->op)
     {
     case BLE_GATT_ACCESS_OP_READ_CHR:
@@ -130,6 +141,43 @@ static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
             rc = os_mbuf_append(ctxt->om, &mqtt_status, sizeof(mqtt_status));
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
+
+        // Read WiFi SSID
+        if (attr_handle == ssid_chr_val_handle)
+        {
+            char ssid[33];
+            size_t ssid_len = sizeof(ssid);
+
+            esp_err_t err = get_wifi_ssid(ssid, &ssid_len);
+            if (err != ESP_OK)
+            {
+                // Return empty string if not found
+                ssid[0] = '\0';
+                ssid_len = 0;
+            }
+
+            rc = os_mbuf_append(ctxt->om, ssid, ssid_len);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
+        // Read WiFi Password
+        if (attr_handle == password_chr_val_handle)
+        {
+            char password[33];
+            size_t password_len = sizeof(password);
+
+            esp_err_t err = get_wifi_password(password, &password_len);
+            if (err != ESP_OK)
+            {
+                // Return empty string if not found
+                password[0] = '\0';
+                password_len = 0;
+            }
+
+            rc = os_mbuf_append(ctxt->om, password, password_len);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
         goto error;
 
     /* Write characteristic event */
@@ -161,6 +209,13 @@ static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 
             ESP_LOGI(TAG, "Received WiFi SSID via BLE: %s", ssid);
 
+            // Store the WiFi SSID in NVS
+            esp_err_t err = store_wifi_ssid(ssid);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to store WiFi SSID in NVS: %s", esp_err_to_name(err));
+            }
+
             return 0;
         }
         /* Verify attribute handle */
@@ -168,14 +223,21 @@ static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
         {
             int len = ctxt->om->om_len;
             if (len == 0 || len > 32)
-            { // WiFi SSID 最大 32 字节
+            { // WiFi Password 最大 32 字节
                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
             }
 
             char password[33] = {0}; // 多一个 '\0'
             os_mbuf_copydata(ctxt->om, 0, len, password);
 
-            ESP_LOGI(TAG, "Received WiFi Password via BLE: %s", password);
+            ESP_LOGI(TAG, "Received WiFi Password via BLE");
+
+            // Store the WiFi password in NVS
+            esp_err_t err = store_wifi_password(password);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to store WiFi password in NVS: %s", esp_err_to_name(err));
+            }
 
             return 0;
         }
@@ -214,8 +276,60 @@ static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
     switch (ctxt->op)
     {
     case BLE_GATT_ACCESS_OP_READ_CHR:
-        // For now, we only support write operations for MQTT config
-        // Reading would return stored values if implemented
+        /* Handle MQTT Server Address characteristic */
+        if (attr_handle == mqtt_addr_chr_val_handle)
+        {
+            char server_addr[256];
+            size_t addr_len = sizeof(server_addr);
+
+            esp_err_t err = get_mqtt_addr(server_addr, &addr_len);
+            if (err != ESP_OK)
+            {
+                // Return empty string if not found
+                server_addr[0] = '\0';
+                addr_len = 0;
+            }
+
+            rc = os_mbuf_append(ctxt->om, server_addr, addr_len);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
+        /* Handle MQTT Username characteristic */
+        if (attr_handle == mqtt_username_chr_val_handle)
+        {
+            char username[65];
+            size_t username_len = sizeof(username);
+
+            esp_err_t err = get_mqtt_username(username, &username_len);
+            if (err != ESP_OK)
+            {
+                // Return empty string if not found
+                username[0] = '\0';
+                username_len = 0;
+            }
+
+            rc = os_mbuf_append(ctxt->om, username, username_len);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
+        /* Handle MQTT Password characteristic */
+        if (attr_handle == mqtt_password_chr_val_handle)
+        {
+            char password[65];
+            size_t password_len = sizeof(password);
+
+            esp_err_t err = get_mqtt_password(password, &password_len);
+            if (err != ESP_OK)
+            {
+                // Return empty string if not found
+                password[0] = '\0';
+                password_len = 0;
+            }
+
+            rc = os_mbuf_append(ctxt->om, password, password_len);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
         goto error;
 
     /* Write characteristic event */
@@ -234,7 +348,7 @@ static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
         }
 
         /* Handle MQTT Server Address characteristic */
-        if (attr_handle == mqtt_server_addr_chr_val_handle)
+        if (attr_handle == mqtt_addr_chr_val_handle)
         {
             int len = ctxt->om->om_len;
             if (len == 0 || len > 255) // Max length for MQTT server address
@@ -247,12 +361,16 @@ static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 
             ESP_LOGI(TAG, "Received MQTT Server Address via BLE: %s", server_addr);
 
-            // TODO: Store the MQTT server address for later use
-            // For now, just log the received value
+            // Store the MQTT server address in NVS
+            esp_err_t err = store_mqtt_addr(server_addr);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to store MQTT server address in NVS: %s", esp_err_to_name(err));
+            }
 
             return 0;
         }
-        
+
         /* Handle MQTT Username characteristic */
         if (attr_handle == mqtt_username_chr_val_handle)
         {
@@ -267,12 +385,16 @@ static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 
             ESP_LOGI(TAG, "Received MQTT Username via BLE: %s", username);
 
-            // TODO: Store the MQTT username for later use
-            // For now, just log the received value
+            // Store the MQTT username in NVS
+            esp_err_t err = store_mqtt_username(username);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to store MQTT username in NVS: %s", esp_err_to_name(err));
+            }
 
             return 0;
         }
-        
+
         /* Handle MQTT Password characteristic */
         if (attr_handle == mqtt_password_chr_val_handle)
         {
@@ -287,12 +409,16 @@ static int mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 
             ESP_LOGI(TAG, "Received MQTT Password via BLE (length: %d)", len);
 
-            // TODO: Store the MQTT password for later use
-            // For now, just log the received value (not the actual password for security)
+            // Store the MQTT password in NVS
+            esp_err_t err = store_mqtt_password(password);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to store MQTT password in NVS: %s", esp_err_to_name(err));
+            }
 
             return 0;
         }
-        
+
         goto error;
 
     /* Unknown event */
@@ -305,6 +431,98 @@ error:
              "unexpected access operation to MQTT characteristic, opcode: %d",
              ctxt->op);
     return BLE_ATT_ERR_UNLIKELY;
+}
+
+/*
+ *  NVS storage helper functions
+ */
+// 通用的NVS字符串存储函数
+static esp_err_t nvs_store_string(const char *key, const char *value)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    err = nvs_set_str(nvs_handle, key, value);
+    if (err != ESP_OK)
+    {
+        nvs_close(nvs_handle);
+        return err;
+    }
+
+    err = nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+    return err;
+}
+
+// 通用的NVS字符串读取函数
+static esp_err_t nvs_read_string(const char *key, char *value, size_t *length)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    err = nvs_get_str(nvs_handle, key, value, length);
+    nvs_close(nvs_handle);
+    return err;
+}
+
+// WiFi配置存储和读取函数
+static esp_err_t store_wifi_ssid(const char *ssid)
+{
+    return nvs_store_string("wifi_ssid", ssid);
+}
+
+static esp_err_t store_wifi_password(const char *password)
+{
+    return nvs_store_string("wifi_password", password);
+}
+
+static esp_err_t get_wifi_ssid(char *ssid, size_t *length)
+{
+    return nvs_read_string("wifi_ssid", ssid, length);
+}
+
+static esp_err_t get_wifi_password(char *password, size_t *length)
+{
+    return nvs_read_string("wifi_password", password, length);
+}
+
+// MQTT配置存储和读取函数
+static esp_err_t store_mqtt_addr(const char *server_addr)
+{
+    return nvs_store_string("mqtt_addr", server_addr);
+}
+
+static esp_err_t store_mqtt_username(const char *username)
+{
+    return nvs_store_string("mqtt_username", username);
+}
+
+static esp_err_t store_mqtt_password(const char *password)
+{
+    return nvs_store_string("mqtt_password", password);
+}
+
+static esp_err_t get_mqtt_addr(char *server_addr, size_t *length)
+{
+    return nvs_read_string("mqtt_addr", server_addr, length);
+}
+
+static esp_err_t get_mqtt_username(char *username, size_t *length)
+{
+    return nvs_read_string("mqtt_username", username, length);
+}
+
+static esp_err_t get_mqtt_password(char *password, size_t *length)
+{
+    return nvs_read_string("mqtt_password", password, length);
 }
 
 /*
