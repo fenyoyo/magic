@@ -115,12 +115,10 @@ extern "C" void app_main(void)
     /* Start NimBLE host task thread and return */
     xTaskCreate(nimble_host_task, "NimBLE Host", 4 * 1024, NULL, 5, NULL);
 
-    return;
-
     // ESP_LOGI("MAIN", "Starting application...");
 
     // 启动程序
-    // Application::getInstance().Start();
+    Application::getInstance().Start();
 
     // 保持运行
     // while (1)

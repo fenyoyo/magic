@@ -97,7 +97,7 @@ void Application::publish_inference_result_with_all_scores(int predicted_class, 
 
     // 构建包含所有分数的JSON对象，格式为"手势名:概率"
     int offset = snprintf(payload, sizeof(payload),
-                          "{\"predicted_class\":%d,\"confidence\":%.4f",
+                          "{\"action\":%d,\"confidence\":%.4f",
                           predicted_class, confidence);
 
     // 完成JSON字符串
@@ -105,7 +105,7 @@ void Application::publish_inference_result_with_all_scores(int predicted_class, 
 
     // 发布推理结果到指定主题
     size_t payload_len = strlen(payload);
-    esp_err_t ret = mqtt.publish(CONFIG_MQTT_INFERENCE_RESULT_TOPIC, payload, payload_len, 0, 0);
+    esp_err_t ret = mqtt.publish("1a2c27b0047/events/predict", payload, payload_len, 0, 0);
     if (ret == ESP_OK)
     {
         ESP_LOGI(TAG, "推理结果已发布到MQTT: 类别=%d, 置信度=%.4f, 总类别数=%d", predicted_class, confidence, num_classes);

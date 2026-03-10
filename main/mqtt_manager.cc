@@ -6,7 +6,7 @@ const char *MQTTManager::TAG = "MQTTManager";
 MQTTManager *MQTTManager::s_instance = nullptr;
 
 MQTTManager::MQTTManager()
-    : m_client(nullptr), m_is_connected(false), m_broker_uri(CONFIG_MQTT_BROKER_URI),
+    : m_client(nullptr), m_is_connected(false), m_broker_uri(CONFIG_MQTT_BROKER_URI), m_username(CONFIG_MQTT_USERNAME), m_password(CONFIG_MQTT_PASSWORD),
       m_subscribe_topic(CONFIG_MQTT_SUBSCRIBE_TOPIC),
       m_publish_topic(CONFIG_MQTT_PUBLISH_TOPIC)
 {
