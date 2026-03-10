@@ -20,7 +20,7 @@ private:
     TfLiteTensor *input = nullptr;
     TfLiteTensor *output = nullptr;
 
-    static constexpr int kTensorArenaSize = 150 * 1024;
+    static constexpr int kTensorArenaSize = 120 * 1024;
     uint8_t tensor_arena[kTensorArenaSize];
 
     // 预处理函数

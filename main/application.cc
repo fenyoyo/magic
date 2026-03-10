@@ -409,9 +409,27 @@ void Application::Start()
 
     configASSERT(xQueueTransOled);
 
-    // Start imu task
-    xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);
-    xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL);
+    // Start imu task - reduce stack size to prevent allocation failure
+    BaseType_t imu_result = xTaskCreate(&mpu6050, "IMU", 1024 * 4, NULL, 5, NULL);      // Reduced from 8KB to 4KB
+    BaseType_t mqtt_result = xTaskCreate(&mqtt_trans, "MQTT", 1024 * 4, NULL, 5, NULL); // Reduced from 8KB to 4KB
+
+    if (imu_result != pdPASS)
+    {
+        ESP_LOGE(TAG, "Failed to create IMU task, error: %d", imu_result);
+    }
+    else
+    {
+        ESP_LOGI(TAG, "IMU task created successfully");
+    }
+
+    if (mqtt_result != pdPASS)
+    {
+        ESP_LOGE(TAG, "Failed to create MQTT task, error: %d", mqtt_result);
+    }
+    else
+    {
+        ESP_LOGI(TAG, "MQTT task created successfully");
+    }
 
     // 初始化推理引擎
     if (!inference_engine.initialize())
@@ -431,14 +449,15 @@ void Application::Start()
     // board.getOLED()->display_message("Hello, World!", 16);
     gpio_set_level(LED_GPIO_R, 0);
 
-    // while (1)
-    // {
-    //     if (gpio_get_level(BUTTON_GPIO_R) == 0)
-    //     {
-    //         ESP_LOGI(TAG, "Button pressed222222222222");
-    //     }
-    //     // vTaskDelay(1000);
-    // }
+    // 监控内存使用情况并保持应用运行
+    while (1)
+    {
+        // 每隔5秒打印一次内存信息
+        ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
+        ESP_LOGI(TAG, "Minimum free heap: %lu bytes", esp_get_minimum_free_heap_size());
+
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+    }
 
     // vTaskDelete(NULL);
 }
