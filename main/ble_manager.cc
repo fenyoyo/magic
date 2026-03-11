@@ -8,6 +8,9 @@
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "esp_system.h"
+#include "esp_heap_caps.h"
+#include "esp_psram.h"
 
 extern "C"
 {
@@ -59,6 +62,18 @@ esp_err_t BleManager::init()
     }
     ESP_ERROR_CHECK(ret);
 
+    // Log PSRAM availability at initialization
+    if (esp_psram_get_size() > 0)
+    {
+        size_t psram_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+        size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        ESP_LOGI(TAG, "PSRAM available: %zu bytes total, %zu bytes free", psram_size, psram_free);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "PSRAM not available, BLE operations will use DRAM");
+    }
+
     /* Initialize NimBLE stack */
     ret = nimble_port_init();
     if (ret != ESP_OK)
@@ -87,11 +102,23 @@ esp_err_t BleManager::init()
     configureHost();
 
     /* Start NimBLE host task */
-    xTaskCreate([](void *param)
+    TaskHandle_t nimble_task_handle = NULL;
+    BaseType_t task_created = xTaskCreate([](void *param)
                 {
         ESP_LOGI(TAG, "nimble host task has been started!");
         nimble_port_run();
-        vTaskDelete(NULL); }, "NimBLE Host", 4 * 1024, NULL, 5, NULL);
+        vTaskDelete(NULL); }, "NimBLE Host", 4 * 1024, NULL, 5, &nimble_task_handle);
+    
+    if(task_created == pdPASS && nimble_task_handle != NULL) {
+        if(esp_psram_get_size() > 0) {
+            ESP_LOGI(TAG, "NimBLE task created, PSRAM is available for other allocations");
+        } else {
+            ESP_LOGW(TAG, "NimBLE task created, no PSRAM available");
+        }
+    } else {
+        ESP_LOGE(TAG, "Failed to create NimBLE host task");
+        return ESP_ERR_NO_MEM;
+    }
 
     return ESP_OK;
 }

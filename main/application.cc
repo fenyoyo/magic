@@ -12,6 +12,10 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "cJSON.h"
+#include "esp_system.h"
+#include "esp_chip_info.h"
+#include "esp_psram.h"
+// #include "esp_flash.h"
 
 #include "parameter.h"
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
@@ -376,6 +380,62 @@ void Application::Start()
 {
     // printf("Application started\n");
     ESP_LOGI(TAG, "Application started");
+
+    printf("\n========== 系统信息检测 ==========\n");
+
+    // 1. 获取芯片信息
+    esp_chip_info_t chip_info;
+    esp_chip_info(&chip_info);
+
+    printf("芯片型号: %s\n", CONFIG_IDF_TARGET);
+    printf("CPU核心数: %d\n", chip_info.cores);
+    printf("芯片版本: v%d.%d\n", chip_info.revision / 100, chip_info.revision % 100);
+
+    // 2. 检查特性
+    printf("特性: ");
+    if (chip_info.features & CHIP_FEATURE_WIFI_BGN)
+        printf("WiFi ");
+    if (chip_info.features & CHIP_FEATURE_BLE)
+        printf("BLE ");
+    if (chip_info.features & CHIP_FEATURE_BT)
+        printf("BT ");
+    if (chip_info.features & CHIP_FEATURE_EMB_FLASH)
+        printf("EmbeddedFlash ");
+    if (chip_info.features & CHIP_FEATURE_EMB_PSRAM)
+        printf("EmbeddedPSRAM ");
+
+    if (esp_psram_is_initialized())
+    { // 或者使用 esp_psram_get_size() > 0
+        printf("PSRAM size: %d bytes\n", esp_psram_get_size());
+        size_t psram_size = esp_psram_get_size();
+        printf("PSRAM: %u MB (已启用)\n", psram_size / (1024 * 1024));
+
+        // 显示不同内存类型的大小
+        printf("\n--- 内存分配统计 ---\n");
+        printf("内部DRAM: %u bytes\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+        printf("内部IRAM: %u bytes\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_EXEC));
+        printf("PSRAM:    %u bytes\n", heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
+
+        // 测试分配PSRAM
+        void *test_ptr = heap_caps_malloc(1024, MALLOC_CAP_SPIRAM);
+        if (test_ptr)
+        {
+            printf("PSRAM分配测试: ✓ 成功\n");
+            heap_caps_free(test_ptr);
+        }
+        else
+        {
+            printf("PSRAM分配测试: ✗ 失败\n");
+        }
+    }
+    else
+    {
+        printf("PSRAM not initialized\n");
+    }
+    printf("\n");
+
+    printf("==================================\n");
+
     gpio_set_level(LED_GPIO_R, 1);
     // 第一步启动wifi
     Board &board = Board::getInstance();
@@ -410,8 +470,8 @@ void Application::Start()
     configASSERT(xQueueTransOled);
 
     // Start imu task - reduce stack size to prevent allocation failure
-    BaseType_t imu_result = xTaskCreate(&mpu6050, "IMU", 1024 * 4, NULL, 5, NULL);      // Reduced from 8KB to 4KB
-    BaseType_t mqtt_result = xTaskCreate(&mqtt_trans, "MQTT", 1024 * 4, NULL, 5, NULL); // Reduced from 8KB to 4KB
+    BaseType_t imu_result = xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);      // Reduced from 8KB to 4KB
+    BaseType_t mqtt_result = xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL); // Reduced from 8KB to 4KB
 
     if (imu_result != pdPASS)
     {
@@ -450,14 +510,14 @@ void Application::Start()
     gpio_set_level(LED_GPIO_R, 0);
 
     // 监控内存使用情况并保持应用运行
-    while (1)
-    {
-        // 每隔5秒打印一次内存信息
-        ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
-        ESP_LOGI(TAG, "Minimum free heap: %lu bytes", esp_get_minimum_free_heap_size());
+    // while (1)
+    // {
+    //     // 每隔5秒打印一次内存信息
+    //     ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
+    //     ESP_LOGI(TAG, "Minimum free heap: %lu bytes", esp_get_minimum_free_heap_size());
 
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
-    }
+    //     vTaskDelay(5000 / portTICK_PERIOD_MS);
+    // }
 
     // vTaskDelete(NULL);
 }
