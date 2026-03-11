@@ -58,9 +58,10 @@ public:
     InferenceEngine inference_engine;
 
     // 添加用于存储MPU6050数据的缓冲区
-    static constexpr int kNumTimeSteps = 100;     // 模型期望的时间步数
-    static constexpr int kNumFeaturesPerStep = 6; // 每个时间步的特征数 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
-    float collected_data[kNumTimeSteps * kNumFeaturesPerStep];
+    static constexpr int kNumTimeSteps = 100;       // 模型期望的时间步数
+    static constexpr int kMaxCollectedTimeSteps = 200; // 最大可收集的时间步数
+    static constexpr int kNumFeaturesPerStep = 6;   // 每个时间步的特征数 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
+    float collected_data[kMaxCollectedTimeSteps * kNumFeaturesPerStep]; // 增加缓冲区大小以容纳最多200个数据点
     int collected_data_index = 0;
     bool collecting_data = false;
 };

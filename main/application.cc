@@ -225,7 +225,7 @@ void Application::mpu6050(void *pvParameters)
                     }
 
                     // 如果正在收集数据且未超出缓冲区大小，则保存数据用于推理
-                    if (app.collecting_data && app.collected_data_index < app.kNumTimeSteps)
+                    if (app.collecting_data && app.collected_data_index < app.kMaxCollectedTimeSteps)
                     {
                         // 存储六轴数据 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
                         app.collected_data[app.collected_data_index * app.kNumFeaturesPerStep + 0] = (float)ax;
@@ -238,9 +238,9 @@ void Application::mpu6050(void *pvParameters)
                         app.collected_data_index++;
 
                         // 如果已收集足够的数据，停止收集
-                        if (app.collected_data_index >= app.kNumTimeSteps * 2)
+                        if (app.collected_data_index >= app.kMaxCollectedTimeSteps)
                         {
-                            ESP_LOGI(TAG, "Collected enough data for inference (%d samples)", app.collected_data_index);
+                            ESP_LOGI(TAG, "Collected maximum data for inference (%d samples)", app.collected_data_index);
                             app.collecting_data = false;
                         }
                     }
@@ -259,7 +259,7 @@ void Application::mpu6050(void *pvParameters)
 
             // 按钮释放后，如果收集到了足够的数据，则执行推理
             Application &app_instance = Application::getInstance();
-            if (app_instance.collected_data_index > 50)
+            if (app_instance.collected_data_index > 50) // 需要超过50个数据点才进行推理
             {
                 ESP_LOGI(TAG, "Executing normalized inference with %d samples", app_instance.collected_data_index);
 
@@ -282,8 +282,10 @@ void Application::mpu6050(void *pvParameters)
             }
             else
             {
-                ESP_LOGW(TAG, "data not enough, collected %d samples", app_instance.collected_data_index);
+                ESP_LOGW(TAG, "data not enough for inference, collected %d samples, resetting...", app_instance.collected_data_index);
             }
+            // 无论是否进行推理，都重置数据收集索引
+            app_instance.collected_data_index = 0;
         }
 
         // if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
