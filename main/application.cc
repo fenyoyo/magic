@@ -441,26 +441,14 @@ void Application::Start()
     gpio_set_level(LED_GPIO_R, 1);
     // 第一步启动wifi
     Board &board = Board::getInstance();
-    board.StartNetwork();
+    // board.StartNetwork();
     board.SetButton();
     // 第二步启动mqtt
     // if (!board.initOLED())
     // {
     //     ESP_LOGE(TAG, "Failed to initialize OLED via Board class");
     // }
-    auto &mqtt = MQTTManager::getInstance();
 
-    mqtt.setMessageCallback([this](const std::string &topic,
-                                   const std::string &data,
-                                   int data_len)
-                            { this->onMQTTMessage(topic, data, data_len); });
-
-    mqtt.setConnectionCallback([this](bool connected)
-                               { this->onMQTTConnection(connected); });
-
-    mqtt.setErrorCallback([this](int error_type, void *error_data)
-                          { this->onMQTTError(error_type, error_data); });
-    mqtt.init();
     // Initialize i2c
     I2Cdev::initialize(400000);
     xQueueTrans = xQueueCreate(10, sizeof(POSE_a_g));
@@ -533,13 +521,32 @@ void Application::wifi_task(void *pvParameters)
     {
         EventBits_t bits = xEventGroupWaitBits(
             app->event_group,
-            Application::WIFI_CONNECTED_BIT,
+            Application::WIFI_CONNECTED_BIT | Application::WIFI_MQTT_CONNECTED_BIT,
             pdTRUE,
             pdFALSE,
             portMAX_DELAY);
+        // 这里修改字段
         if (bits & Application::WIFI_CONNECTED_BIT)
         {
+            Board &board = Board::getInstance();
+            board.StartNetwork();
             ESP_LOGI(TAG, "WiFi connected, starting MQTT task");
+        }
+        if (bits & Application::WIFI_MQTT_CONNECTED_BIT)
+        {
+            auto &mqtt = MQTTManager::getInstance();
+
+            mqtt.setMessageCallback([app](const std::string &topic,
+                                          const std::string &data,
+                                          int data_len)
+                                    { app->onMQTTMessage(topic, data, data_len); });
+
+            mqtt.setConnectionCallback([app](bool connected)
+                                       { app->onMQTTConnection(connected); });
+
+            mqtt.setErrorCallback([app](int error_type, void *error_data)
+                                  { app->onMQTTError(error_type, error_data); });
+            mqtt.init();
         }
     }
 }

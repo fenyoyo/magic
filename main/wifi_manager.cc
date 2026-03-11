@@ -1,6 +1,8 @@
 #include "wifi_manager.h"
+#include "NVSManager.h"
+#include "public.h"
 
-const char *WiFiManager::TAG = "WiFiManager";
+#define TAG "WiFiManager"
 EventGroupHandle_t WiFiManager::s_wifi_event_group = nullptr;
 int WiFiManager::s_retry_num = 0;
 void (*WiFiManager::s_connection_callback)(bool success) = nullptr;
@@ -96,9 +98,13 @@ void WiFiManager::initSTA()
                                                         &instance_got_ip));
 
     // WiFi配置
+    NVSManager nvsManager("storage");
+    nvsManager.init();
+    std::string ssid = nvsManager.readString(WIFI_SSID);
+    std::string password = nvsManager.readString(WIFI_PASSWORD);
     wifi_config_t wifi_config = {};
-    strlcpy((char *)wifi_config.sta.ssid, CONFIG_ESP_WIFI_SSID, sizeof(wifi_config.sta.ssid));
-    strlcpy((char *)wifi_config.sta.password, CONFIG_ESP_WIFI_PASSWORD, sizeof(wifi_config.sta.password));
+    strlcpy((char *)wifi_config.sta.ssid, ssid.c_str(), sizeof(wifi_config.sta.ssid));
+    strlcpy((char *)wifi_config.sta.password, password.c_str(), sizeof(wifi_config.sta.password));
 
 #if CONFIG_ESP_WPA3_SAE_PWE_HUNT_AND_PECK
     wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_HUNT_AND_PECK;

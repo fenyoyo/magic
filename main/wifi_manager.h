@@ -94,7 +94,6 @@ private:
     void initSTA();
 
 private:
-    static const char *TAG;
     static EventGroupHandle_t s_wifi_event_group;
     static int s_retry_num;
     static void (*s_connection_callback)(bool success);

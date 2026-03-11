@@ -85,17 +85,17 @@ bool NVSManager::writeString(const char *key, const char *value)
 std::string NVSManager::readString(const char *key)
 {
     if (!initialized)
-        return "";
+        return "11";
 
     size_t required_size;
     esp_err_t err = nvs_get_str(nvs_handle, key, nullptr, &required_size);
     if (err != ESP_OK)
-        return "";
+        return "22";
 
     char *buffer = new char[required_size];
     err = nvs_get_str(nvs_handle, key, buffer, &required_size);
 
-    std::string result = (err == ESP_OK) ? buffer : "";
+    std::string result = (err == ESP_OK) ? buffer : "33";
     delete[] buffer;
 
     return result;

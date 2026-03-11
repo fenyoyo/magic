@@ -69,6 +69,8 @@ public:
     EventGroupHandle_t event_group;
 
     static constexpr EventBits_t WIFI_CONNECTED_BIT = BIT0;
+    static constexpr EventBits_t WIFI_FAIL_BIT = BIT1;
+    static constexpr EventBits_t WIFI_MQTT_CONNECTED_BIT = BIT2;
 };
 
 #endif // _APPLICATION_H_

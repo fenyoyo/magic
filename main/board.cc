@@ -14,6 +14,7 @@
 #include "driver/gpio.h"
 #include <string>
 #include <cstdio>
+#include "NVSManager.h"
 
 #define TAG "Board"
 Board::Board()
