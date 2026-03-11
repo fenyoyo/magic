@@ -164,13 +164,15 @@ void Application::mpu6050(void *pvParameters)
     {
         if (gpio_get_level(BUTTON_GPIO) == 0)
         {
+            // 获取单例实例一次
+            Application &app = Application::getInstance();
+            
             seq = 0;
             gpio_set_level(LED_GPIO, 1);
             ESP_LOGI(TAG, "Button pressed, start collecting MPU6050 data for inference");
             mqtt.publish("/device/start", "", 0, 0, 0);
 
             // 开始收集数据
-            Application &app = Application::getInstance();
             app.collecting_data = true;
             app.collected_data_index = 0;
 
@@ -178,24 +180,21 @@ void Application::mpu6050(void *pvParameters)
             {
                 if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
                 {
+                    // 获取基础传感器数据
+                    int16_t ax, ay, az, gx, gy, gz;
+                    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+                    // 获取四元数和欧拉角数据
+                    mpu.dmpGetQuaternion(&q, fifoBuffer);
+                    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+                    
+                    // 获取线性加速度数据
                     mpu.dmpGetAccel(&aa, fifoBuffer);
                     mpu.dmpGetGravity(&gravity, &q);
                     mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
                     mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
 
                     gpio_set_level(LED_GPIO, 1);
-
-                    int16_t ax, ay, az, gx, gy, gz;
-                    mpu.getAcceleration(&ax, &ay, &az);
-                    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-
-                    mpu.dmpGetQuaternion(&q, fifoBuffer);
-                    mpu.dmpGetEuler(euler, &q);
-                    mpu.dmpGetAccel(&aa, fifoBuffer);
-                    mpu.dmpGetGravity(&gravity, &q);
-                    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-                    mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-                    mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
 
                     POSE_a_g pose;
                     pose.seq = seq;
@@ -258,34 +257,33 @@ void Application::mpu6050(void *pvParameters)
             ESP_LOGI(TAG, "Button released, collected %u samples", (unsigned)seq);
 
             // 按钮释放后，如果收集到了足够的数据，则执行推理
-            Application &app_instance = Application::getInstance();
-            if (app_instance.collected_data_index > 50) // 需要超过50个数据点才进行推理
+            if (app.collected_data_index > 50) // 需要超过50个数据点才进行推理
             {
-                ESP_LOGI(TAG, "Executing normalized inference with %d samples", app_instance.collected_data_index);
+                ESP_LOGI(TAG, "Executing normalized inference with %d samples", app.collected_data_index);
 
                 // 使用时间序列归一化函数处理数据并执行推理
                 // 这样可以处理任意长度的数据序列，并将其标准化为目标长度
-                app_instance.inference_engine.run_normalized_inference(
-                    app_instance.collected_data,
-                    app_instance.collected_data_index,
-                    app_instance.kNumTimeSteps,
-                    app_instance.kNumFeaturesPerStep);
+                app.inference_engine.run_normalized_inference(
+                    app.collected_data,
+                    app.collected_data_index,
+                    app.kNumTimeSteps,
+                    app.kNumFeaturesPerStep);
 
                 // 获取推理结果并发布
-                int predicted_class = app_instance.inference_engine.get_predicted_class();
-                float confidence = app_instance.inference_engine.get_confidence();
-                const float *all_scores = app_instance.inference_engine.get_all_scores();
-                int num_classes = app_instance.inference_engine.get_num_classes();
+                int predicted_class = app.inference_engine.get_predicted_class();
+                float confidence = app.inference_engine.get_confidence();
+                const float *all_scores = app.inference_engine.get_all_scores();
+                int num_classes = app.inference_engine.get_num_classes();
 
-                app_instance.publish_inference_result_with_all_scores(predicted_class, confidence,
-                                                                      const_cast<float *>(all_scores), num_classes);
+                app.publish_inference_result_with_all_scores(predicted_class, confidence,
+                                                            const_cast<float *>(all_scores), num_classes);
             }
             else
             {
-                ESP_LOGW(TAG, "data not enough for inference, collected %d samples, resetting...", app_instance.collected_data_index);
+                ESP_LOGW(TAG, "data not enough for inference, collected %d samples, resetting...", app.collected_data_index);
             }
             // 无论是否进行推理，都重置数据收集索引
-            app_instance.collected_data_index = 0;
+            app.collected_data_index = 0;
         }
 
         // if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
