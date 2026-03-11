@@ -11,7 +11,9 @@
 #include "esp_system.h"
 #include "esp_heap_caps.h"
 #include "esp_psram.h"
-
+#include "application.h"
+#include "NVSManager.h"
+#define TAG "BleManager"
 extern "C"
 {
 #include "gap.h"
@@ -49,6 +51,136 @@ BleManager::~BleManager()
     s_ble_manager_instance = nullptr;
 }
 
+// /* Automation IO service */
+// static const ble_uuid16_t auto_io_svc_uuid = BLE_UUID16_INIT(0x1815);
+// static uint16_t ssid_chr_val_handle;
+// static const ble_uuid16_t ssid_chr_uuid = BLE_UUID16_INIT(0x2A31);
+// static uint16_t password_chr_val_handle;
+// static const ble_uuid16_t password_chr_uuid = BLE_UUID16_INIT(0x2A32);
+// static uint16_t connect_chr_val_handle;
+// static const ble_uuid16_t connect_chr_uuid = BLE_UUID16_INIT(0x2A33);
+
+// static uint16_t connect_status_chr_val_handle;
+// static const ble_uuid16_t connect_status_chr_uuid = BLE_UUID16_INIT(0x2A21);
+// static uint16_t mqtt_status_chr_val_handle;
+// static const ble_uuid16_t mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
+
+// /* MQTT Configuration service */
+// static const ble_uuid16_t mqtt_config_svc_uuid = BLE_UUID16_INIT(0x1889); // Custom UUID for MQTT Configuration Service
+// static uint16_t mqtt_addr_chr_val_handle;
+// static const ble_uuid16_t mqtt_addr_chr_uuid = BLE_UUID16_INIT(0x2B01); // Custom UUID for MQTT Server Address
+// static uint16_t mqtt_username_chr_val_handle;
+// static const ble_uuid16_t mqtt_username_chr_uuid = BLE_UUID16_INIT(0x2B02); // Custom UUID for MQTT Username
+// static uint16_t mqtt_password_chr_val_handle;
+// static const ble_uuid16_t mqtt_password_chr_uuid = BLE_UUID16_INIT(0x2B03); // Custom UUID for MQTT Password
+
+// /* Magic Learning service */
+// static const ble_uuid16_t magic_learning_svc_uuid = BLE_UUID16_INIT(0x1890); // Custom UUID for Magic Learning Service
+// static uint16_t magic_enable_chr_val_handle;
+// static const ble_uuid16_t magic_enable_chr_uuid = BLE_UUID16_INIT(0x2C01); // Custom UUID for Magic Enable characteristic
+// /* GATT services table */
+
+const ble_uuid16_t BleManager::magic_learning_svc_uuid = BLE_UUID16_INIT(0x1890); // Custom UUID for Magic Learning Service
+const ble_uuid16_t BleManager::magic_enable_chr_uuid = BLE_UUID16_INIT(0x2C01);   // Custom UUID for Magic Enable characteristic
+uint16_t BleManager::magic_enable_chr_val_handle = 0;                             // 初始化为0
+
+const ble_uuid16_t BleManager::auto_io_svc_uuid = BLE_UUID16_INIT(0x1815);
+uint16_t BleManager::ssid_chr_val_handle = 0;
+const ble_uuid16_t BleManager::ssid_chr_uuid = BLE_UUID16_INIT(0x2A31);
+uint16_t BleManager::password_chr_val_handle = 0;
+const ble_uuid16_t BleManager::password_chr_uuid = BLE_UUID16_INIT(0x2A32);
+uint16_t BleManager::connect_chr_val_handle = 0;
+const ble_uuid16_t BleManager::connect_chr_uuid = BLE_UUID16_INIT(0x2A33);
+uint16_t BleManager::connect_status_chr_val_handle = 0;
+const ble_uuid16_t BleManager::connect_status_chr_uuid = BLE_UUID16_INIT(0x2A21);
+uint16_t BleManager::mqtt_status_chr_val_handle = 0;
+const ble_uuid16_t BleManager::mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
+
+const ble_uuid16_t BleManager::mqtt_config_svc_uuid = BLE_UUID16_INIT(0x1889); // Custom UUID for MQTT Configuration Service
+uint16_t BleManager::mqtt_addr_chr_val_handle = 0;
+const ble_uuid16_t BleManager::mqtt_addr_chr_uuid = BLE_UUID16_INIT(0x2B01); // Custom UUID for MQTT Server Address
+uint16_t BleManager::mqtt_username_chr_val_handle = 0;
+const ble_uuid16_t BleManager::mqtt_username_chr_uuid = BLE_UUID16_INIT(0x2B02); // Custom UUID for MQTT Username
+uint16_t BleManager::mqtt_password_chr_val_handle = 0;
+const ble_uuid16_t BleManager::mqtt_password_chr_uuid = BLE_UUID16_INIT(0x2B03); // Custom UUID for MQTT Password
+
+const struct ble_gatt_svc_def BleManager::gatt_svr_svcs[] = {
+
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &auto_io_svc_uuid.u,
+        .characteristics =
+            (struct ble_gatt_chr_def[]){/* WiFi SSID characteristic */
+                                        {.uuid = &ssid_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                                         .val_handle = &ssid_chr_val_handle},
+                                        {.uuid = &password_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                                         .val_handle = &password_chr_val_handle},
+                                        {.uuid = &connect_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                                         .val_handle = &connect_chr_val_handle},
+                                        {.uuid = &connect_status_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+                                         .val_handle = &connect_status_chr_val_handle},
+                                        {.uuid = &mqtt_status_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_READ,
+                                         .val_handle = &mqtt_status_chr_val_handle},
+                                        {0}},
+    },
+
+    /* MQTT Configuration service */
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &mqtt_config_svc_uuid.u,
+        .characteristics =
+            (struct ble_gatt_chr_def[]){
+                /* MQTT Server Address characteristic */
+                {
+                    .uuid = &mqtt_addr_chr_uuid.u,
+                    .access_cb = mqtt_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .val_handle = &mqtt_addr_chr_val_handle},
+                /* MQTT Username characteristic */
+                {
+                    .uuid = &mqtt_username_chr_uuid.u,
+                    .access_cb = mqtt_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .val_handle = &mqtt_username_chr_val_handle},
+                /* MQTT Password characteristic */
+                {
+                    .uuid = &mqtt_password_chr_uuid.u,
+                    .access_cb = mqtt_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .val_handle = &mqtt_password_chr_val_handle},
+                {0} // End of characteristics array
+            },
+    },
+    /* Magic Learning service */
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &magic_learning_svc_uuid.u,
+        .characteristics =
+            (struct ble_gatt_chr_def[]){
+                /* Magic Enable characteristic */
+                {
+                    .uuid = &magic_enable_chr_uuid.u,
+                    .access_cb = magic_learning_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .val_handle = &magic_enable_chr_val_handle},
+                {0} // End of characteristics array
+            },
+    },
+
+    {
+        0, /* No more services. */
+    },
+};
 esp_err_t BleManager::init()
 {
     esp_err_t ret;
@@ -90,13 +222,29 @@ esp_err_t BleManager::init()
         return ret;
     }
 
-    /* Initialize GATT server */
-    ret = gatt_svc_init();
+    ble_svc_gatt_init();
+
+    /* 2. Update GATT services counter */
+    ret = ble_gatts_count_cfg(gatt_svr_svcs);
     if (ret != 0)
     {
-        ESP_LOGE(TAG, "failed to initialize GATT server, error code: %d", ret);
         return ret;
     }
+
+    /* 3. Add GATT services */
+    ret = ble_gatts_add_svcs(gatt_svr_svcs);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    /* Initialize GATT server */
+    // ret = gatt_svc_init();
+    // if (ret != 0)
+    // {
+    //     ESP_LOGE(TAG, "failed to initialize GATT server, error code: %d", ret);
+    //     return ret;
+    // }
 
     /* Configure host */
     configureHost();
@@ -104,18 +252,24 @@ esp_err_t BleManager::init()
     /* Start NimBLE host task */
     TaskHandle_t nimble_task_handle = NULL;
     BaseType_t task_created = xTaskCreate([](void *param)
-                {
+                                          {
         ESP_LOGI(TAG, "nimble host task has been started!");
         nimble_port_run();
         vTaskDelete(NULL); }, "NimBLE Host", 4 * 1024, NULL, 5, &nimble_task_handle);
-    
-    if(task_created == pdPASS && nimble_task_handle != NULL) {
-        if(esp_psram_get_size() > 0) {
+
+    if (task_created == pdPASS && nimble_task_handle != NULL)
+    {
+        if (esp_psram_get_size() > 0)
+        {
             ESP_LOGI(TAG, "NimBLE task created, PSRAM is available for other allocations");
-        } else {
+        }
+        else
+        {
             ESP_LOGW(TAG, "NimBLE task created, no PSRAM available");
         }
-    } else {
+    }
+    else
+    {
         ESP_LOGE(TAG, "Failed to create NimBLE host task");
         return ESP_ERR_NO_MEM;
     }
@@ -440,6 +594,386 @@ void BleManager::formatAddr(char *addr_str, uint8_t addr[])
 {
     sprintf(addr_str, "%02X:%02X:%02X:%02X:%02X:%02X",
             addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+}
+
+int BleManager::magic_learning_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    ESP_LOGI(TAG, "magic_learning_chr_access2 called with conn_handle=%d, attr_handle=%d, op=%d",
+             conn_handle, attr_handle, ctxt->op);
+    auto &app = Application::getInstance();
+    xEventGroupSetBits(app.event_group, Application::WIFI_CONNECTED_BIT);
+
+    //         /* Local variables */
+    //     int rc;
+    //     static bool magic_enabled = false; // 存储魔法启用状态
+
+    //     /* Handle access events */
+    //     switch (ctxt->op)
+    //     {
+    //     case BLE_GATT_ACCESS_OP_READ_CHR:
+    //         /* Handle Magic Enable characteristic */
+    //         goto error;
+
+    //     /* Write characteristic event */
+    //     case BLE_GATT_ACCESS_OP_WRITE_CHR:
+    //         /* Verify connection handle */
+    //         if (conn_handle != BLE_HS_CONN_HANDLE_NONE)
+    //         {
+    //             ESP_LOGI(TAG, "Magic learning characteristic write; conn_handle=%d attr_handle=%d",
+    //                      conn_handle, attr_handle);
+    //         }
+    //         else
+    //         {
+    //             ESP_LOGI(TAG,
+    //                      "Magic learning characteristic write by nimble stack; attr_handle=%d",
+    //                      attr_handle);
+    //         }
+
+    //         /* Handle Magic Enable characteristic */
+    //         if (attr_handle == magic_enable_chr_val_handle)
+    //         {
+    //             int len = ctxt->om->om_len;
+    //             if (len != sizeof(bool))
+    //             { // 布尔值应该正好是一个字节
+    //                 ESP_LOGE(TAG, "Invalid length for boolean value: %d", len);
+    //                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    //             }
+
+    //             // 从请求中读取布尔值
+    //             bool new_magic_state;
+    //             os_mbuf_copydata(ctxt->om, 0, len, &new_magic_state);
+
+    //             // 更新魔法启用状态
+    //             magic_enabled = new_magic_state;
+
+    //             ESP_LOGI(TAG, "Magic learning state updated via BLE: %s",
+    //                      magic_enabled ? "ENABLED" : "DISABLED");
+
+    //             // 可以在这里添加实际的魔法学习启动/停止逻辑
+    //             if (magic_enabled)
+    //             {
+    //                 ESP_LOGI(TAG, "Starting magic learning process...");
+    //                 // 在这里可以添加启动魔法学习的代码
+    //             }
+    //             else
+    //             {
+    //                 ESP_LOGI(TAG, "Stopping magic learning process...");
+    //                 // 在这里可以添加停止魔法学习的代码
+    //             }
+
+    //             return 0;
+    //         }
+
+    //         goto error;
+
+    //     /* Unknown event */
+    //     default:
+    //         goto error;
+    //     }
+
+    // error:
+    //     ESP_LOGE(TAG,
+    //              "unexpected access operation to Magic Learning characteristic, opcode: %d",
+    //              ctxt->op);
+    //     return BLE_ATT_ERR_UNLIKELY;
+    return 0;
+}
+
+int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    //         /* Local variables */
+    //     int rc;
+
+    //     /* Handle access events */
+    //     switch (ctxt->op)
+    //     {
+    //     case BLE_GATT_ACCESS_OP_READ_CHR:
+    //         /* Handle MQTT Server Address characteristic */
+    //         if (attr_handle == mqtt_addr_chr_val_handle)
+    //         {
+    //             char server_addr[256];
+    //             size_t addr_len = sizeof(server_addr);
+
+    //             esp_err_t err = get_mqtt_addr(server_addr, &addr_len);
+    //             if (err != ESP_OK)
+    //             {
+    //                 // Return empty string if not found
+    //                 server_addr[0] = '\0';
+    //                 addr_len = 0;
+    //             }
+
+    //             rc = os_mbuf_append(ctxt->om, server_addr, addr_len);
+    //             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    //         }
+
+    //         /* Handle MQTT Username characteristic */
+    //         if (attr_handle == mqtt_username_chr_val_handle)
+    //         {
+    //             char username[65];
+    //             size_t username_len = sizeof(username);
+
+    //             esp_err_t err = get_mqtt_username(username, &username_len);
+    //             if (err != ESP_OK)
+    //             {
+    //                 // Return empty string if not found
+    //                 username[0] = '\0';
+    //                 username_len = 0;
+    //             }
+
+    //             rc = os_mbuf_append(ctxt->om, username, username_len);
+    //             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    //         }
+
+    //         /* Handle MQTT Password characteristic */
+    //         if (attr_handle == mqtt_password_chr_val_handle)
+    //         {
+    //             char password[65];
+    //             size_t password_len = sizeof(password);
+
+    //             esp_err_t err = get_mqtt_password(password, &password_len);
+    //             if (err != ESP_OK)
+    //             {
+    //                 // Return empty string if not found
+    //                 password[0] = '\0';
+    //                 password_len = 0;
+    //             }
+
+    //             rc = os_mbuf_append(ctxt->om, password, password_len);
+    //             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    //         }
+
+    //         goto error;
+
+    //     /* Write characteristic event */
+    //     case BLE_GATT_ACCESS_OP_WRITE_CHR:
+    //         /* Verify connection handle */
+    //         if (conn_handle != BLE_HS_CONN_HANDLE_NONE)
+    //         {
+    //             ESP_LOGI(TAG, "MQTT characteristic write; conn_handle=%d attr_handle=%d",
+    //                      conn_handle, attr_handle);
+    //         }
+    //         else
+    //         {
+    //             ESP_LOGI(TAG,
+    //                      "MQTT characteristic write by nimble stack; attr_handle=%d",
+    //                      attr_handle);
+    //         }
+
+    //         /* Handle MQTT Server Address characteristic */
+    //         if (attr_handle == mqtt_addr_chr_val_handle)
+    //         {
+    //             int len = ctxt->om->om_len;
+    //             if (len == 0 || len > 255) // Max length for MQTT server address
+    //             {
+    //                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    //             }
+
+    //             char server_addr[256] = {0};
+    //             os_mbuf_copydata(ctxt->om, 0, len, server_addr);
+
+    //             ESP_LOGI(TAG, "Received MQTT Server Address via BLE: %s", server_addr);
+
+    //             // Store the MQTT server address in NVS
+    //             esp_err_t err = store_mqtt_addr(server_addr);
+    //             if (err != ESP_OK)
+    //             {
+    //                 ESP_LOGE(TAG, "Failed to store MQTT server address in NVS: %s", esp_err_to_name(err));
+    //             }
+
+    //             return 0;
+    //         }
+
+    //         /* Handle MQTT Username characteristic */
+    //         if (attr_handle == mqtt_username_chr_val_handle)
+    //         {
+    //             int len = ctxt->om->om_len;
+    //             if (len == 0 || len > 64) // Max length for username
+    //             {
+    //                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    //             }
+
+    //             char username[65] = {0};
+    //             os_mbuf_copydata(ctxt->om, 0, len, username);
+
+    //             ESP_LOGI(TAG, "Received MQTT Username via BLE: %s", username);
+
+    //             // Store the MQTT username in NVS
+    //             esp_err_t err = store_mqtt_username(username);
+    //             if (err != ESP_OK)
+    //             {
+    //                 ESP_LOGE(TAG, "Failed to store MQTT username in NVS: %s", esp_err_to_name(err));
+    //             }
+
+    //             return 0;
+    //         }
+
+    //         /* Handle MQTT Password characteristic */
+    //         if (attr_handle == mqtt_password_chr_val_handle)
+    //         {
+    //             int len = ctxt->om->om_len;
+    //             if (len == 0 || len > 64) // Max length for password
+    //             {
+    //                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    //             }
+
+    //             char password[65] = {0};
+    //             os_mbuf_copydata(ctxt->om, 0, len, password);
+
+    //             ESP_LOGI(TAG, "Received MQTT Password via BLE (length: %d)", len);
+
+    //             // Store the MQTT password in NVS
+    //             esp_err_t err = store_mqtt_password(password);
+    //             if (err != ESP_OK)
+    //             {
+    //                 ESP_LOGE(TAG, "Failed to store MQTT password in NVS: %s", esp_err_to_name(err));
+    //             }
+
+    //             return 0;
+    //         }
+
+    //         goto error;
+
+    //     /* Unknown event */
+    //     default:
+    //         goto error;
+    //     }
+
+    // error:
+    //     ESP_LOGE(TAG,
+    //              "unexpected access operation to MQTT characteristic, opcode: %d",
+    //              ctxt->op);
+    //     return BLE_ATT_ERR_UNLIKELY;
+    return 0;
+}
+
+int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    /* Local variables */
+    int rc;
+    NVSManager nvsManager("storage");
+    /* Handle access events */
+    switch (ctxt->op)
+    {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+        if (attr_handle == connect_status_chr_val_handle)
+        {
+            // TODO 读取 WiFi 连接状态
+            uint8_t connect_status = 1; // 0: 未连接，1: 已连接
+            rc = os_mbuf_append(ctxt->om, &connect_status,
+                                sizeof(connect_status));
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
+        if (attr_handle == mqtt_status_chr_val_handle)
+        {
+            // TODO 读取 MQTT 连接状态
+            uint8_t mqtt_status = 1; // 0: 未连接，1: 已连接
+            rc = os_mbuf_append(ctxt->om, &mqtt_status, sizeof(mqtt_status));
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
+        // Read WiFi SSID
+        if (attr_handle == ssid_chr_val_handle)
+        {
+
+            std::string ssid_str;
+            ssid_str = nvsManager.readString(WIFI_SSID);
+            rc = os_mbuf_append(ctxt->om, ssid_str.c_str(), ssid_str.length());
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
+        // Read WiFi Password
+        if (attr_handle == password_chr_val_handle)
+        {
+
+            std::string password_str;
+            password_str = nvsManager.readString(WIFI_PASSWORD);
+            rc = os_mbuf_append(ctxt->om, password_str.c_str(), password_str.length());
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
+        goto error;
+
+    /* Write characteristic event */
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+        /* Verify connection handle */
+        if (conn_handle != BLE_HS_CONN_HANDLE_NONE)
+        {
+            ESP_LOGI(TAG, "characteristic write; conn_handle=%d attr_handle=%d",
+                     conn_handle, attr_handle);
+        }
+        else
+        {
+            ESP_LOGI(TAG,
+                     "characteristic write by nimble stack; attr_handle=%d",
+                     attr_handle);
+        }
+
+        /* Verify attribute handle */
+        if (attr_handle == ssid_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+            if (len == 0 || len > 32)
+            { // WiFi SSID 最大 32 字节
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            char ssid[33] = {0}; // 多一个 '\0'
+            os_mbuf_copydata(ctxt->om, 0, len, ssid);
+
+            ESP_LOGI(TAG, "Received WiFi SSID via BLE: %s", ssid);
+
+            // Store the WiFi SSID in NVS
+            esp_err_t err = nvsManager.writeString(WIFI_SSID, ssid);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to store WiFi SSID in NVS: %s", esp_err_to_name(err));
+            }
+
+            return 0;
+        }
+        /* Verify attribute handle */
+        if (attr_handle == password_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+            if (len == 0 || len > 32)
+            { // WiFi Password 最大 32 字节
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            char password[33] = {0}; // 多一个 '\0'
+            os_mbuf_copydata(ctxt->om, 0, len, password);
+
+            ESP_LOGI(TAG, "Received WiFi Password via BLE");
+
+            // Store the WiFi password in NVS
+            esp_err_t err = nvsManager.writeString(WIFI_PASSWORD, password);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to store WiFi password in NVS: %s", esp_err_to_name(err));
+            }
+
+            return 0;
+        }
+        if (attr_handle == connect_chr_val_handle)
+        {
+            // TODO 根据接收到的 SSID 和 Password 连接 WiFi
+            ESP_LOGI(TAG, "Received connect command via BLE, connecting to WiFi...");
+
+            return 0;
+        }
+        goto error;
+
+    /* Unknown event */
+    default:
+        goto error;
+    }
+
+error:
+    ESP_LOGE(TAG,
+             "unexpected access operation to WiFi SSID characteristic, opcode: %d",
+             ctxt->op);
+    return BLE_ATT_ERR_UNLIKELY;
 }
 
 int BleManager::setDeviceName(const char *name)

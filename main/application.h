@@ -7,7 +7,7 @@
 #include "freertos/task.h"
 #include "inference_engine.h"
 #include "time_series_normalizer.h"
-
+#include "freertos/event_groups.h"
 // 定义推理结果的MQTT主题
 #ifndef CONFIG_MQTT_INFERENCE_RESULT_TOPIC
 #define CONFIG_MQTT_INFERENCE_RESULT_TOPIC "/device/inference/result"
@@ -24,6 +24,7 @@ private:
     bool m_mqtt_connected;
     static void mpu6050(void *arg);
     static void mqtt_trans(void *arg);
+    static void wifi_task(void *arg);
     float *preprocess(float *raw_data, int len)
     {
         static float processed[600]; // 100*6
@@ -58,12 +59,16 @@ public:
     InferenceEngine inference_engine;
 
     // 添加用于存储MPU6050数据的缓冲区
-    static constexpr int kNumTimeSteps = 100;       // 模型期望的时间步数
-    static constexpr int kMaxCollectedTimeSteps = 200; // 最大可收集的时间步数
-    static constexpr int kNumFeaturesPerStep = 6;   // 每个时间步的特征数 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
+    static constexpr int kNumTimeSteps = 100;                           // 模型期望的时间步数
+    static constexpr int kMaxCollectedTimeSteps = 200;                  // 最大可收集的时间步数
+    static constexpr int kNumFeaturesPerStep = 6;                       // 每个时间步的特征数 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
     float collected_data[kMaxCollectedTimeSteps * kNumFeaturesPerStep]; // 增加缓冲区大小以容纳最多200个数据点
     int collected_data_index = 0;
     bool collecting_data = false;
+
+    EventGroupHandle_t event_group;
+
+    static constexpr EventBits_t WIFI_CONNECTED_BIT = BIT0;
 };
 
 #endif // _APPLICATION_H_

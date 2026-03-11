@@ -166,7 +166,7 @@ void Application::mpu6050(void *pvParameters)
         {
             // 获取单例实例一次
             Application &app = Application::getInstance();
-            
+
             seq = 0;
             gpio_set_level(LED_GPIO, 1);
             ESP_LOGI(TAG, "Button pressed, start collecting MPU6050 data for inference");
@@ -187,7 +187,7 @@ void Application::mpu6050(void *pvParameters)
                     // 获取四元数和欧拉角数据
                     mpu.dmpGetQuaternion(&q, fifoBuffer);
                     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-                    
+
                     // 获取线性加速度数据
                     mpu.dmpGetAccel(&aa, fifoBuffer);
                     mpu.dmpGetGravity(&gravity, &q);
@@ -276,7 +276,7 @@ void Application::mpu6050(void *pvParameters)
                 int num_classes = app.inference_engine.get_num_classes();
 
                 app.publish_inference_result_with_all_scores(predicted_class, confidence,
-                                                            const_cast<float *>(all_scores), num_classes);
+                                                             const_cast<float *>(all_scores), num_classes);
             }
             else
             {
@@ -378,6 +378,8 @@ QueueHandle_t Application::xQueueTransOled = nullptr;
 
 void Application::Start()
 {
+
+    event_group = xEventGroupCreate();
     // printf("Application started\n");
     ESP_LOGI(TAG, "Application started");
 
@@ -472,6 +474,7 @@ void Application::Start()
     // Start imu task - reduce stack size to prevent allocation failure
     BaseType_t imu_result = xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);      // Reduced from 8KB to 4KB
     BaseType_t mqtt_result = xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL); // Reduced from 8KB to 4KB
+    xTaskCreate(&wifi_task, "wifitask", 1024 * 8, this, 5, NULL);                       // Reduced from 8KB to 4KB
 
     if (imu_result != pdPASS)
     {
@@ -510,14 +513,33 @@ void Application::Start()
     gpio_set_level(LED_GPIO_R, 0);
 
     // 监控内存使用情况并保持应用运行
-    // while (1)
-    // {
-    //     // 每隔5秒打印一次内存信息
-    //     ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
-    //     ESP_LOGI(TAG, "Minimum free heap: %lu bytes", esp_get_minimum_free_heap_size());
+    while (1)
+    {
+        // 每隔5秒打印一次内存信息
+        ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
+        ESP_LOGI(TAG, "Minimum free heap: %lu bytes", esp_get_minimum_free_heap_size());
 
-    //     vTaskDelay(5000 / portTICK_PERIOD_MS);
-    // }
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+    }
 
     // vTaskDelete(NULL);
+}
+
+void Application::wifi_task(void *pvParameters)
+{
+
+    auto *app = static_cast<Application *>(pvParameters);
+    while (1)
+    {
+        EventBits_t bits = xEventGroupWaitBits(
+            app->event_group,
+            Application::WIFI_CONNECTED_BIT,
+            pdTRUE,
+            pdFALSE,
+            portMAX_DELAY);
+        if (bits & Application::WIFI_CONNECTED_BIT)
+        {
+            ESP_LOGI(TAG, "WiFi connected, starting MQTT task");
+        }
+    }
 }

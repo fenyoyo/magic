@@ -21,7 +21,7 @@
 extern "C" void app_main(void)
 {
     // Initialize BLE using BleManager
-    BleManager& ble = BleManager::getInstance();
+    BleManager &ble = BleManager::getInstance();
     esp_err_t ret = ble.init();
     if (ret != ESP_OK)
     {
