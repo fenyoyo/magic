@@ -5,7 +5,6 @@
 #include "esp_log.h"
 #include <string>
 
-#define TAG "NVSManager"
 class NVSManager
 {
 private:

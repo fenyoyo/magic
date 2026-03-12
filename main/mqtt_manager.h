@@ -58,41 +58,6 @@ public:
     // 获取MQTT客户端句柄
     esp_mqtt_client_handle_t getClient() const { return m_client; }
 
-    // 设置回调函数
-    void setMessageCallback(MessageCallback callback);
-    void setConnectionCallback(ConnectionCallback callback);
-    void setErrorCallback(ErrorCallback callback);
-
-    // 设置成员函数回调（模板方法）
-    template <typename T>
-    void setMessageCallback(T *instance, void (T::*callback)(const std::string &, const std::string &, int))
-    {
-        m_message_callback = [instance, callback](const std::string &topic,
-                                                  const std::string &data,
-                                                  int data_len)
-        {
-            (instance->*callback)(topic, data, data_len);
-        };
-    }
-
-    template <typename T>
-    void setConnectionCallback(T *instance, void (T::*callback)(bool))
-    {
-        m_connection_callback = [instance, callback](bool connected)
-        {
-            (instance->*callback)(connected);
-        };
-    }
-
-    template <typename T>
-    void setErrorCallback(T *instance, void (T::*callback)(int, void *))
-    {
-        m_error_callback = [instance, callback](int error_type, void *error_data)
-        {
-            (instance->*callback)(error_type, error_data);
-        };
-    }
-
 private:
     MQTTManager();
     ~MQTTManager();
@@ -117,11 +82,6 @@ private:
 
     esp_mqtt_client_handle_t m_client;
     bool m_is_connected;
-
-    // 回调函数
-    MessageCallback m_message_callback;
-    ConnectionCallback m_connection_callback;
-    ErrorCallback m_error_callback;
 
     // 配置参数
     std::string m_broker_uri;

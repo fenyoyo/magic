@@ -914,7 +914,7 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             }
 
             auto &app = Application::getInstance();
-            xEventGroupSetBits(app.event_group, Application::WIFI_CONNECTED_BIT);
+            xEventGroupSetBits(app.event_group, WIFI_CONNECT_BIT);
             return 0;
         }
         if (attr_handle == connect_chr_val_handle)

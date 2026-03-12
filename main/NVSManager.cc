@@ -1,4 +1,6 @@
 #include "NVSManager.h"
+
+#define TAG "NVSManager"
 bool NVSManager::init()
 
 {
@@ -33,7 +35,6 @@ bool NVSManager::init()
     }
 
     initialized = true;
-    ESP_LOGI(TAG, "NVS initialized with namespace: %s", namespace_name);
     return true;
 }
 

@@ -10,6 +10,7 @@
 #include "nvs_flash.h"
 #include "esp_log.h"
 
+#define TAG "gatt_svc"
 /*
  *  Handle GATT attribute register events
  *      - Service register event

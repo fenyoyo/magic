@@ -27,6 +27,7 @@
 
 // #include "ssd1306.h"
 #include "time_series_normalizer.h"
+#include "public.h"
 
 #define TAG "Application"
 
@@ -76,18 +77,20 @@ void Application::mqtt_trans(void *pvParameters)
         {
             // ESP_LOGI(TAG, "pose=%d %d %d", pose.ax, pose.ay, pose.az);
             // ESP_LOGI(TAG, "quat x:%6.2f y:%6.2f z:%6.2f w:%6.2f\n", pose.qx, pose.qy, pose.qz, pose.qw);
-            int len;
-            len = snprintf(payload, sizeof(payload),
-                           "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d ,\"qx\":%6.2f,\"qy\":%6.2f,\"qz\":%6.2f,\"qw\":%f,\"roll\":%f,\"pitch\":%f,\"yaw\":%f,\"rax\":%d,\"ray\":%d,\"raz\":%d,\"wx\":%d,\"wy\":%d,\"wz\":%d}",
-                           (unsigned)pose.seq,
-                           pose.ax,
-                           pose.ay,
-                           pose.az,
-                           pose.gx,
-                           pose.gy,
-                           pose.gz, pose.qx, pose.qy, pose.qz, pose.qw, pose.roll, pose.pitch, pose.yaw, pose.rax, pose.ray, pose.raz, pose.wx, pose.wy, pose.wz);
 
-            mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
+            // TODO 这里判断是否使学习模式，如果是才进行发送
+            //  int len;
+            //  len = snprintf(payload, sizeof(payload),
+            //                 "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d ,\"qx\":%6.2f,\"qy\":%6.2f,\"qz\":%6.2f,\"qw\":%f,\"roll\":%f,\"pitch\":%f,\"yaw\":%f,\"rax\":%d,\"ray\":%d,\"raz\":%d,\"wx\":%d,\"wy\":%d,\"wz\":%d}",
+            //                 (unsigned)pose.seq,
+            //                 pose.ax,
+            //                 pose.ay,
+            //                 pose.az,
+            //                 pose.gx,
+            //                 pose.gy,
+            //                 pose.gz, pose.qx, pose.qy, pose.qz, pose.qw, pose.roll, pose.pitch, pose.yaw, pose.rax, pose.ray, pose.raz, pose.wx, pose.wy, pose.wz);
+
+            // mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
         }
     }
     vTaskDelete(NULL);
@@ -374,7 +377,6 @@ void Application::onMQTTError(int error_type, void *error_data)
     }
 }
 QueueHandle_t Application::xQueueTrans = nullptr;
-QueueHandle_t Application::xQueueTransOled = nullptr;
 
 void Application::Start()
 {
@@ -383,106 +385,16 @@ void Application::Start()
     // printf("Application started\n");
     ESP_LOGI(TAG, "Application started");
 
-    printf("\n========== 系统信息检测 ==========\n");
-
-    // 1. 获取芯片信息
-    esp_chip_info_t chip_info;
-    esp_chip_info(&chip_info);
-
-    printf("芯片型号: %s\n", CONFIG_IDF_TARGET);
-    printf("CPU核心数: %d\n", chip_info.cores);
-    printf("芯片版本: v%d.%d\n", chip_info.revision / 100, chip_info.revision % 100);
-
-    // 2. 检查特性
-    printf("特性: ");
-    if (chip_info.features & CHIP_FEATURE_WIFI_BGN)
-        printf("WiFi ");
-    if (chip_info.features & CHIP_FEATURE_BLE)
-        printf("BLE ");
-    if (chip_info.features & CHIP_FEATURE_BT)
-        printf("BT ");
-    if (chip_info.features & CHIP_FEATURE_EMB_FLASH)
-        printf("EmbeddedFlash ");
-    if (chip_info.features & CHIP_FEATURE_EMB_PSRAM)
-        printf("EmbeddedPSRAM ");
-
-    if (esp_psram_is_initialized())
-    { // 或者使用 esp_psram_get_size() > 0
-        printf("PSRAM size: %d bytes\n", esp_psram_get_size());
-        size_t psram_size = esp_psram_get_size();
-        printf("PSRAM: %u MB (已启用)\n", psram_size / (1024 * 1024));
-
-        // 显示不同内存类型的大小
-        printf("\n--- 内存分配统计 ---\n");
-        printf("内部DRAM: %u bytes\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-        printf("内部IRAM: %u bytes\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_EXEC));
-        printf("PSRAM:    %u bytes\n", heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
-
-        // 测试分配PSRAM
-        void *test_ptr = heap_caps_malloc(1024, MALLOC_CAP_SPIRAM);
-        if (test_ptr)
-        {
-            printf("PSRAM分配测试: ✓ 成功\n");
-            heap_caps_free(test_ptr);
-        }
-        else
-        {
-            printf("PSRAM分配测试: ✗ 失败\n");
-        }
-    }
-    else
-    {
-        printf("PSRAM not initialized\n");
-    }
-    printf("\n");
-
-    printf("==================================\n");
-
     gpio_set_level(LED_GPIO_R, 1);
     // 第一步启动wifi
     Board &board = Board::getInstance();
-    // board.StartNetwork();
-    board.SetButton();
-    // 第二步启动mqtt
-    // if (!board.initOLED())
-    // {
-    //     ESP_LOGE(TAG, "Failed to initialize OLED via Board class");
-    // }
 
-    // Initialize i2c
-    I2Cdev::initialize(400000);
+    board.SetButton();
+
     xQueueTrans = xQueueCreate(10, sizeof(POSE_a_g));
 
     configASSERT(xQueueTrans);
 
-    xQueueTransOled = xQueueCreate(10, sizeof(POSE_a));
-
-    configASSERT(xQueueTransOled);
-
-    // Start imu task - reduce stack size to prevent allocation failure
-    BaseType_t imu_result = xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);      // Reduced from 8KB to 4KB
-    BaseType_t mqtt_result = xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL); // Reduced from 8KB to 4KB
-    xTaskCreate(&wifi_task, "wifitask", 1024 * 8, this, 5, NULL);                       // Reduced from 8KB to 4KB
-
-    if (imu_result != pdPASS)
-    {
-        ESP_LOGE(TAG, "Failed to create IMU task, error: %d", imu_result);
-    }
-    else
-    {
-        ESP_LOGI(TAG, "IMU task created successfully");
-    }
-
-    if (mqtt_result != pdPASS)
-    {
-        ESP_LOGE(TAG, "Failed to create MQTT task, error: %d", mqtt_result);
-    }
-    else
-    {
-        ESP_LOGI(TAG, "MQTT task created successfully");
-    }
-
-    // 初始化推理引擎
     if (!inference_engine.initialize())
     {
         ESP_LOGE(TAG, "推理引擎初始化失败");
@@ -494,59 +406,60 @@ void Application::Start()
     getInstance().collected_data_index = 0;
     getInstance().collecting_data = false;
 
-    // 启动OLED显示任务（现在由Board类管理）
-    // 注意：实际的OLED任务现在在Board类中管理，这里不需要再创建
-
-    // board.getOLED()->display_message("Hello, World!", 16);
     gpio_set_level(LED_GPIO_R, 0);
 
     // 监控内存使用情况并保持应用运行
     while (1)
     {
-        // 每隔5秒打印一次内存信息
-        ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
-        ESP_LOGI(TAG, "Minimum free heap: %lu bytes", esp_get_minimum_free_heap_size());
-
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
-    }
-
-    // vTaskDelete(NULL);
-}
-
-void Application::wifi_task(void *pvParameters)
-{
-
-    auto *app = static_cast<Application *>(pvParameters);
-    while (1)
-    {
         EventBits_t bits = xEventGroupWaitBits(
-            app->event_group,
-            Application::WIFI_CONNECTED_BIT | Application::WIFI_MQTT_CONNECTED_BIT,
+            event_group,
+            WIFI_CONNECT_BIT | WIFI_CONNECTED_BIT | WIFI_CONNECT_FAIL_BIT | MQTT_CONNECT_BIT | MQTT_CONNECTED_BIT | MQTT_CONNECT_FAIL_BIT,
             pdTRUE,
             pdFALSE,
             portMAX_DELAY);
         // 这里修改字段
-        if (bits & Application::WIFI_CONNECTED_BIT)
+        if (bits & WIFI_CONNECT_BIT)
         {
             Board &board = Board::getInstance();
             board.StartNetwork();
             ESP_LOGI(TAG, "WiFi connected, starting MQTT task");
         }
-        if (bits & Application::WIFI_MQTT_CONNECTED_BIT)
+        if (bits & WIFI_CONNECTED_BIT)
         {
             auto &mqtt = MQTTManager::getInstance();
-
-            mqtt.setMessageCallback([app](const std::string &topic,
-                                          const std::string &data,
-                                          int data_len)
-                                    { app->onMQTTMessage(topic, data, data_len); });
-
-            mqtt.setConnectionCallback([app](bool connected)
-                                       { app->onMQTTConnection(connected); });
-
-            mqtt.setErrorCallback([app](int error_type, void *error_data)
-                                  { app->onMQTTError(error_type, error_data); });
             mqtt.init();
         }
+
+        if (bits & MQTT_CONNECT_BIT)
+        {
+            // auto &mqtt = MQTTManager::getInstance();
+            // mqtt.connect();
+        }
+        if (bits & MQTT_CONNECTED_BIT)
+        {
+            // Initialize i2c
+            I2Cdev::initialize(400000);
+            // Start imu task - reduce stack size to prevent allocation failure
+            BaseType_t mqtt_result = xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, NULL); // Reduced from 8KB to 4KB
+            BaseType_t imu_result = xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, NULL);      // Reduced from 8KB to 4KB
+            if (mqtt_result != pdPASS)
+            {
+                ESP_LOGI(TAG, "MQTT任务启动失败");
+            }
+            if (imu_result != pdPASS)
+            {
+                ESP_LOGI(TAG, "IMU任务启动失败");
+            }
+            if (imu_result == pdPASS)
+            {
+                ESP_LOGI(TAG, "魔杖已经连接到MQTT服务器，IMU任务已启动");
+            }
+        }
+        if (bits & MQTT_CONNECT_FAIL_BIT)
+        {
+            ESP_LOGE(TAG, "MQTT connection failed");
+        }
     }
+
+    // vTaskDelete(NULL);
 }

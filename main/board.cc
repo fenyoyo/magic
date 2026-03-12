@@ -15,6 +15,8 @@
 #include <string>
 #include <cstdio>
 #include "NVSManager.h"
+#include "application.h"
+#include "public.h"
 
 #define TAG "Board"
 Board::Board()
@@ -44,7 +46,11 @@ void Board::StartNetwork()
                                {
         if (success)
         {
-            ESP_LOGI(TAG, "Connected to WiFi");
+                        ESP_LOGI(TAG, "Connected to WiFi");
+                Application &app = Application::getInstance();
+                xEventGroupSetBits(app.event_group, WIFI_CONNECTED_BIT);
+                ESP_LOGI(TAG, "WiFi connected, starting MQTT task");
+
         }
         else
         {

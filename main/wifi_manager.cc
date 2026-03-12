@@ -41,7 +41,7 @@ void WiFiManager::eventHandler(void *arg, esp_event_base_t event_base,
         }
         else
         {
-            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+            xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECT_FAIL_BIT);
             instance.m_is_connected = false;
 
             if (s_connection_callback)
@@ -132,7 +132,7 @@ bool WiFiManager::connect()
 
     // 等待连接结果
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                           WIFI_CONNECTED_BIT | WIFI_CONNECT_FAIL_BIT,
                                            pdFALSE,
                                            pdFALSE,
                                            portMAX_DELAY);
@@ -144,7 +144,7 @@ bool WiFiManager::connect()
         m_is_connected = true;
         return true;
     }
-    else if (bits & WIFI_FAIL_BIT)
+    else if (bits & WIFI_CONNECT_FAIL_BIT)
     {
         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
                  CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);

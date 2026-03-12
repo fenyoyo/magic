@@ -1,5 +1,7 @@
 #include "mqtt_manager.h"
 #include "esp_log.h"
+#include "application.h"
+#include "public.h"
 #include <string.h>
 
 const char *MQTTManager::TAG = "MQTTManager";
@@ -27,48 +29,12 @@ MQTTManager &MQTTManager::getInstance()
     return *s_instance;
 }
 
-void MQTTManager::setMessageCallback(MessageCallback callback)
-{
-    m_message_callback = callback;
-}
-
-void MQTTManager::setConnectionCallback(ConnectionCallback callback)
-{
-    m_connection_callback = callback;
-}
-
-void MQTTManager::setErrorCallback(ErrorCallback callback)
-{
-    m_error_callback = callback;
-}
-
 void MQTTManager::handleConnected(esp_mqtt_event_handle_t event)
 {
     ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
     m_is_connected = true;
-
-    // 触发连接回调
-    if (m_connection_callback)
-    {
-        m_connection_callback(true);
-    }
-
-    // 自动订阅配置的主题
-    if (!m_subscribe_topic.empty())
-    {
-        int msg_id = esp_mqtt_client_subscribe(m_client, m_subscribe_topic.c_str(), 0);
-        ESP_LOGI(TAG, "Sent subscribe successful, msg_id=%d", msg_id);
-    }
-
-    // 发布连接成功消息
-    if (!m_publish_topic.empty())
-    {
-        int msg_id = esp_mqtt_client_publish(m_client,
-                                             m_publish_topic.c_str(),
-                                             "ESP32 Connected",
-                                             0, 1, 0);
-        ESP_LOGI(TAG, "Sent publish successful, msg_id=%d", msg_id);
-    }
+    auto &app = Application::getInstance();
+    xEventGroupSetBits(app.event_group, MQTT_CONNECTED_BIT);
 }
 
 void MQTTManager::handleDisconnected()
@@ -76,11 +42,11 @@ void MQTTManager::handleDisconnected()
     ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
     m_is_connected = false;
 
-    // 触发连接回调
-    if (m_connection_callback)
-    {
-        m_connection_callback(false);
-    }
+    // // 触发连接回调
+    // if (m_connection_callback)
+    // {
+    //     m_connection_callback(false);
+    // }
 }
 
 void MQTTManager::handleData(esp_mqtt_event_handle_t event)
@@ -90,12 +56,12 @@ void MQTTManager::handleData(esp_mqtt_event_handle_t event)
     ESP_LOGI(TAG, "DATA=%.*s", event->data_len, event->data);
 
     // 触发消息回调
-    if (m_message_callback)
-    {
-        std::string topic(event->topic, event->topic_len);
-        std::string data(event->data, event->data_len);
-        m_message_callback(topic, data, event->data_len);
-    }
+    // if (m_message_callback)
+    // {
+    //     std::string topic(event->topic, event->topic_len);
+    //     std::string data(event->data, event->data_len);
+    //     m_message_callback(topic, data, event->data_len);
+    // }
 }
 
 void MQTTManager::handleError(esp_mqtt_event_handle_t event)
@@ -122,11 +88,11 @@ void MQTTManager::handleError(esp_mqtt_event_handle_t event)
     }
 
     // 触发错误回调
-    if (m_error_callback)
-    {
-        m_error_callback(event->error_handle ? event->error_handle->error_type : -1,
-                         event->error_handle);
-    }
+    // if (m_error_callback)
+    // {
+    //     m_error_callback(event->error_handle ? event->error_handle->error_type : -1,
+    //                      event->error_handle);
+    // }
 }
 
 void MQTTManager::handleSubscribed(esp_mqtt_event_handle_t event)
@@ -155,6 +121,7 @@ void MQTTManager::eventHandler(void *handler_args,
     switch ((esp_mqtt_event_id_t)event_id)
     {
     case MQTT_EVENT_CONNECTED:
+        // 连接事件
         instance.handleConnected(event);
         break;
 
@@ -175,6 +142,7 @@ void MQTTManager::eventHandler(void *handler_args,
         break;
 
     case MQTT_EVENT_DATA:
+        // 消息事件
         instance.handleData(event);
         break;
 

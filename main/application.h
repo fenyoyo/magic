@@ -20,7 +20,6 @@ private:
     Application();
     ~Application();
     static QueueHandle_t xQueueTrans;
-    static QueueHandle_t xQueueTransOled;
     bool m_mqtt_connected;
     static void mpu6050(void *arg);
     static void mqtt_trans(void *arg);
@@ -67,10 +66,6 @@ public:
     bool collecting_data = false;
 
     EventGroupHandle_t event_group;
-
-    static constexpr EventBits_t WIFI_CONNECTED_BIT = BIT0;
-    static constexpr EventBits_t WIFI_FAIL_BIT = BIT1;
-    static constexpr EventBits_t WIFI_MQTT_CONNECTED_BIT = BIT2;
 };
 
 #endif // _APPLICATION_H_
