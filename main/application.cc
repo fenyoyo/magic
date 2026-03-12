@@ -388,7 +388,8 @@ void Application::Start()
     gpio_set_level(LED_GPIO_R, 1);
     // 第一步启动wifi
     Board &board = Board::getInstance();
-
+    // 尝试wifi连接
+    board.StartNetwork();
     board.SetButton();
 
     xQueueTrans = xQueueCreate(10, sizeof(POSE_a_g));
@@ -428,6 +429,10 @@ void Application::Start()
         {
             auto &mqtt = MQTTManager::getInstance();
             mqtt.init();
+        }
+        if (bits & WIFI_CONNECT_FAIL_BIT)
+        {
+            // ESP_LOGE(TAG, "WiFi connection failed");
         }
 
         if (bits & MQTT_CONNECT_BIT)

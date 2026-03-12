@@ -1,11 +1,11 @@
 #include "wifi_manager.h"
 #include "NVSManager.h"
 #include "public.h"
+#include "application.h"
 
 #define TAG "WiFiManager"
 EventGroupHandle_t WiFiManager::s_wifi_event_group = nullptr;
 int WiFiManager::s_retry_num = 0;
-void (*WiFiManager::s_connection_callback)(bool success) = nullptr;
 
 WiFiManager::WiFiManager() : m_is_connected(false)
 {
@@ -32,7 +32,7 @@ void WiFiManager::eventHandler(void *arg, esp_event_base_t event_base,
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
         WiFiManager &instance = WiFiManager::getInstance();
-
+        auto &app = Application::getInstance();
         if (s_retry_num < MAXIMUM_RETRY)
         {
             esp_wifi_connect();
@@ -41,13 +41,8 @@ void WiFiManager::eventHandler(void *arg, esp_event_base_t event_base,
         }
         else
         {
-            xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECT_FAIL_BIT);
+            xEventGroupSetBits(app.event_group, WIFI_CONNECT_FAIL_BIT);
             instance.m_is_connected = false;
-
-            if (s_connection_callback)
-            {
-                s_connection_callback(false);
-            }
         }
         ESP_LOGI(TAG, "connect to the AP fail");
     }
@@ -60,14 +55,9 @@ void WiFiManager::eventHandler(void *arg, esp_event_base_t event_base,
         instance.m_ip_addr = event->ip_info.ip;
 
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-
+        auto &app = Application::getInstance();
         s_retry_num = 0;
-        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-
-        if (s_connection_callback)
-        {
-            s_connection_callback(true);
-        }
+        xEventGroupSetBits(app.event_group, WIFI_CONNECTED_BIT);
     }
 }
 
@@ -130,33 +120,7 @@ bool WiFiManager::connect()
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_LOGI(TAG, "wifi_init_sta finished.");
 
-    // 等待连接结果
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-                                           WIFI_CONNECTED_BIT | WIFI_CONNECT_FAIL_BIT,
-                                           pdFALSE,
-                                           pdFALSE,
-                                           portMAX_DELAY);
-
-    if (bits & WIFI_CONNECTED_BIT)
-    {
-        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-                 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-        m_is_connected = true;
-        return true;
-    }
-    else if (bits & WIFI_CONNECT_FAIL_BIT)
-    {
-        ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
-                 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-        m_is_connected = false;
-        return false;
-    }
-    else
-    {
-        ESP_LOGE(TAG, "UNEXPECTED EVENT");
-        m_is_connected = false;
-        return false;
-    }
+    return true;
 }
 
 void WiFiManager::disconnect()
@@ -178,9 +142,4 @@ bool WiFiManager::isConnected()
 esp_ip4_addr_t WiFiManager::getIPAddress()
 {
     return m_ip_addr;
-}
-
-void WiFiManager::setConnectionCallback(void (*callback)(bool success))
-{
-    s_connection_callback = callback;
 }

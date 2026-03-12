@@ -40,23 +40,6 @@ void Board::StartNetwork()
     ESP_LOGI(TAG, "StartNetwork");
     // 获取WiFi管理器单例
     WiFiManager &wifi = WiFiManager::getInstance();
-
-    // 设置连接回调
-    wifi.setConnectionCallback([](bool success)
-                               {
-        if (success)
-        {
-                        ESP_LOGI(TAG, "Connected to WiFi");
-                Application &app = Application::getInstance();
-                xEventGroupSetBits(app.event_group, WIFI_CONNECTED_BIT);
-                ESP_LOGI(TAG, "WiFi connected, starting MQTT task");
-
-        }
-        else
-        {
-            ESP_LOGI(TAG, "Failed to connect to WiFi");
-        } });
-
     // 连接WiFi（异步方式，通过回调获取结果）
     wifi.connect();
 }

@@ -72,10 +72,6 @@ public:
 
     // 获取当前IP地址
     esp_ip4_addr_t getIPAddress();
-
-    // 设置连接回调
-    void setConnectionCallback(void (*callback)(bool success));
-
     // 禁止拷贝构造和赋值操作
     WiFiManager(const WiFiManager &) = delete;
     WiFiManager &operator=(const WiFiManager &) = delete;
@@ -94,7 +90,6 @@ private:
 private:
     static EventGroupHandle_t s_wifi_event_group;
     static int s_retry_num;
-    static void (*s_connection_callback)(bool success);
 
     bool m_is_connected;
     esp_ip4_addr_t m_ip_addr;
