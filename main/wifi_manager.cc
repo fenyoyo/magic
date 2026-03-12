@@ -28,6 +28,7 @@ void WiFiManager::eventHandler(void *arg, esp_event_base_t event_base,
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
     {
+        ESP_LOGI(TAG, "WiFi station started");
         esp_wifi_connect();
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
@@ -42,8 +43,10 @@ void WiFiManager::eventHandler(void *arg, esp_event_base_t event_base,
         }
         else
         {
+            ESP_LOGI(TAG, "Failed to connect to the AP after %d retries", MAXIMUM_RETRY);
             xEventGroupSetBits(app.event_group, WIFI_CONNECT_FAIL_BIT);
             instance.m_is_connected = false;
+            s_retry_num = 0; // 重置重试计数器
         }
         ESP_LOGI(TAG, "connect to the AP fail");
     }
@@ -57,7 +60,7 @@ void WiFiManager::eventHandler(void *arg, esp_event_base_t event_base,
 
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         auto &app = Application::getInstance();
-        s_retry_num = 0;
+        s_retry_num = 0; // 连接成功时重置重试计数器
         xEventGroupSetBits(app.event_group, WIFI_CONNECTED_BIT);
     }
 }

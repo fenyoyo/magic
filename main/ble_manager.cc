@@ -115,15 +115,15 @@ const struct ble_gatt_svc_def BleManager::gatt_svr_svcs[] = {
             (struct ble_gatt_chr_def[]){/* WiFi SSID characteristic */
                                         {.uuid = &ssid_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
-                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                                         .flags = BLE_GATT_CHR_F_WRITE,
                                          .val_handle = &ssid_chr_val_handle},
                                         {.uuid = &password_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
-                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                                         .flags = BLE_GATT_CHR_F_WRITE,
                                          .val_handle = &password_chr_val_handle},
                                         {.uuid = &connect_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
-                                         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                                         .flags = BLE_GATT_CHR_F_WRITE,
                                          .val_handle = &connect_chr_val_handle},
                                         {.uuid = &connect_status_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
@@ -146,19 +146,19 @@ const struct ble_gatt_svc_def BleManager::gatt_svr_svcs[] = {
                 {
                     .uuid = &mqtt_addr_chr_uuid.u,
                     .access_cb = mqtt_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .flags = BLE_GATT_CHR_F_WRITE,
                     .val_handle = &mqtt_addr_chr_val_handle},
                 /* MQTT Username characteristic */
                 {
                     .uuid = &mqtt_username_chr_uuid.u,
                     .access_cb = mqtt_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .flags = BLE_GATT_CHR_F_WRITE,
                     .val_handle = &mqtt_username_chr_val_handle},
                 /* MQTT Password characteristic */
                 {
                     .uuid = &mqtt_password_chr_uuid.u,
                     .access_cb = mqtt_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ,
+                    .flags = BLE_GATT_CHR_F_WRITE,
                     .val_handle = &mqtt_password_chr_val_handle},
                 {0} // End of characteristics array
             },
@@ -672,52 +672,28 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
     switch (ctxt->op)
     {
     case BLE_GATT_ACCESS_OP_READ_CHR:
-        /* Handle MQTT Server Address characteristic */
+        /* Handle MQTT Server Address characteristic - 移除此功能以提高安全性 */
         if (attr_handle == mqtt_addr_chr_val_handle)
         {
-            std::string server_addr = nvsManager.readString("mqtt_server_addr");
-
-            // 如果服务器地址为空，不发送任何内容
-            if (server_addr.empty())
-            {
-                ESP_LOGW(TAG, "MQTT server address is empty, not sending to BLE client");
-                goto error;
-            }
-
-            rc = os_mbuf_append(ctxt->om, server_addr.c_str(), server_addr.length());
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            // 为防止敏感信息泄露，禁用MQTT服务器地址读取功能
+            ESP_LOGW(TAG, "Attempt to read MQTT server address blocked for security reasons");
+            goto error;
         }
 
-        /* Handle MQTT Username characteristic */
+        /* Handle MQTT Username characteristic - 移除此功能以提高安全性 */
         if (attr_handle == mqtt_username_chr_val_handle)
         {
-            std::string username = nvsManager.readString("mqtt_username");
-
-            // 如果用户名为空，不发送任何内容
-            if (username.empty())
-            {
-                ESP_LOGW(TAG, "MQTT username is empty, not sending to BLE client");
-                goto error;
-            }
-
-            rc = os_mbuf_append(ctxt->om, username.c_str(), username.length());
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            // 为防止敏感信息泄露，禁用MQTT用户名读取功能
+            ESP_LOGW(TAG, "Attempt to read MQTT username blocked for security reasons");
+            goto error;
         }
 
-        /* Handle MQTT Password characteristic */
+        /* Handle MQTT Password characteristic - 移除此功能以提高安全性 */
         if (attr_handle == mqtt_password_chr_val_handle)
         {
-            std::string password = nvsManager.readString("mqtt_password");
-
-            // 如果密码为空，不发送任何内容
-            if (password.empty())
-            {
-                ESP_LOGW(TAG, "MQTT password is empty, not sending to BLE client");
-                goto error;
-            }
-
-            rc = os_mbuf_append(ctxt->om, password.c_str(), password.length());
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            // 为防止敏感信息泄露，禁用MQTT密码读取功能
+            ESP_LOGW(TAG, "Attempt to read MQTT password blocked for security reasons");
+            goto error;
         }
 
         goto error;
@@ -879,44 +855,26 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
         if (attr_handle == mqtt_status_chr_val_handle)
         {
             // 读取 MQTT 连接状态
-            auto &app = MQTTManager::getInstance();
-            uint8_t mqtt_status = app.isConnected() ? 1 : 0; // 0: 未连接，1: 已连接
+            auto &mqtt = MQTTManager::getInstance();
+            uint8_t mqtt_status = mqtt.isConnected() ? 1 : 0; // 0: 未连接，1: 已连接
             rc = os_mbuf_append(ctxt->om, &mqtt_status, sizeof(mqtt_status));
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 
-        // Read WiFi SSID
+        // Read WiFi SSID - 移除此功能以提高安全性
         if (attr_handle == ssid_chr_val_handle)
         {
-            std::string ssid_str = nvsManager.readString(WIFI_SSID);
-
-            // 如果SSID为空，不发送任何内容
-            if (ssid_str.empty())
-            {
-                ESP_LOGW(TAG, "WiFi SSID is empty, not sending to BLE client");
-                goto error;
-            }
-
-            ESP_LOGI(TAG, "Read WiFi SSID via BLE：%s", ssid_str.c_str());
-            rc = os_mbuf_append(ctxt->om, ssid_str.c_str(), ssid_str.length());
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            // 为防止敏感信息泄露，禁用WiFi SSID读取功能
+            ESP_LOGW(TAG, "Attempt to read WiFi SSID blocked for security reasons");
+            goto error;
         }
 
-        // Read WiFi Password
+        // Read WiFi Password - 移除此功能以提高安全性
         if (attr_handle == password_chr_val_handle)
         {
-            std::string password_str = nvsManager.readString(WIFI_PASSWORD);
-
-            // 如果密码为空，不发送任何内容
-            if (password_str.empty())
-            {
-                ESP_LOGW(TAG, "WiFi password is empty, not sending to BLE client");
-                goto error;
-            }
-
-            ESP_LOGI(TAG, "Read WiFi Password via BLE:%s", password_str.c_str());
-            rc = os_mbuf_append(ctxt->om, password_str.c_str(), password_str.length());
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            // 为防止敏感信息泄露，禁用WiFi密码读取功能
+            ESP_LOGW(TAG, "Attempt to read WiFi password blocked for security reasons");
+            goto error;
         }
 
         goto error;

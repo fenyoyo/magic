@@ -10,13 +10,13 @@
 #define MQTT_USERNAME "mqtt_username"
 #define MQTT_PASSWORD "mqtt_password"
 
-static constexpr EventBits_t WIFI_CONNECT_BIT = BIT0;
-static constexpr EventBits_t WIFI_CONNECTED_BIT = BIT1;
-static constexpr EventBits_t WIFI_CONNECT_FAIL_BIT = BIT2;
+static constexpr EventBits_t WIFI_CONNECT_BIT = (1 << 0);
+static constexpr EventBits_t WIFI_CONNECTED_BIT = (1 << 1);
+static constexpr EventBits_t WIFI_CONNECT_FAIL_BIT = (1 << 2);
 
-static constexpr EventBits_t MQTT_CONNECT_BIT = BIT3;
-static constexpr EventBits_t MQTT_CONNECTED_BIT = BIT4;
-static constexpr EventBits_t MQTT_CONNECT_FAIL_BIT = BIT5;
+static constexpr EventBits_t MQTT_CONNECT_BIT = (1 << 3);
+static constexpr EventBits_t MQTT_CONNECTED_BIT = (1 << 4);
+static constexpr EventBits_t MQTT_CONNECT_FAIL_BIT = (1 << 5);
 
 // /*
 //  *  NVS storage helper functions

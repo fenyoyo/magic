@@ -96,7 +96,10 @@ std::string NVSManager::readString(const char *key)
     char *buffer = new char[required_size];
     err = nvs_get_str(nvs_handle, key, buffer, &required_size);
 
-    std::string result = (err == ESP_OK) ? buffer : "";
+    std::string result;
+    if (err == ESP_OK) {
+        result = buffer;
+    }
     delete[] buffer;
 
     return result;
