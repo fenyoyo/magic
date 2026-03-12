@@ -6,6 +6,7 @@
 #define TAG "WiFiManager"
 EventGroupHandle_t WiFiManager::s_wifi_event_group = nullptr;
 int WiFiManager::s_retry_num = 0;
+bool WiFiManager::s_initialized = false; // 添加静态变量跟踪初始化状态
 
 WiFiManager::WiFiManager() : m_is_connected(false)
 {
@@ -63,35 +64,41 @@ void WiFiManager::eventHandler(void *arg, esp_event_base_t event_base,
 
 void WiFiManager::initSTA()
 {
-    s_wifi_event_group = xEventGroupCreate();
+    // 只有在未初始化的情况下才初始化网络接口和事件循环
+    if (!s_initialized) {
+        s_wifi_event_group = xEventGroupCreate();
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+        ESP_ERROR_CHECK(esp_netif_init());
+        ESP_ERROR_CHECK(esp_event_loop_create_default());
+        esp_netif_create_default_wifi_sta();
 
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    // 注册事件处理
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
+        // 注册事件处理
+        esp_event_handler_instance_t instance_any_id;
+        esp_event_handler_instance_t instance_got_ip;
 
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                                                        ESP_EVENT_ANY_ID,
-                                                        &eventHandler,
-                                                        nullptr,
-                                                        &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-                                                        IP_EVENT_STA_GOT_IP,
-                                                        &eventHandler,
-                                                        nullptr,
-                                                        &instance_got_ip));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                            ESP_EVENT_ANY_ID,
+                                                            &eventHandler,
+                                                            nullptr,
+                                                            &instance_any_id));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+                                                            IP_EVENT_STA_GOT_IP,
+                                                            &eventHandler,
+                                                            nullptr,
+                                                            &instance_got_ip));
+        
+        s_initialized = true;
+    }
 
-    // WiFi配置
+    // 重新加载WiFi配置
     NVSManager nvsManager("storage");
     nvsManager.init();
     std::string ssid = nvsManager.readString(WIFI_SSID);
     std::string password = nvsManager.readString(WIFI_PASSWORD);
+    
     wifi_config_t wifi_config = {};
     strlcpy((char *)wifi_config.sta.ssid, ssid.c_str(), sizeof(wifi_config.sta.ssid));
     strlcpy((char *)wifi_config.sta.password, password.c_str(), sizeof(wifi_config.sta.password));
@@ -115,6 +122,23 @@ void WiFiManager::initSTA()
 
 bool WiFiManager::connect()
 {
+    // 如果已经连接，先断开之前的连接
+    if (m_is_connected) {
+        disconnect();
+    }
+    
+    // 检查凭据是否有效
+    NVSManager nvsManager("storage");
+    nvsManager.init();
+    std::string ssid = nvsManager.readString(WIFI_SSID);
+    std::string password = nvsManager.readString(WIFI_PASSWORD);
+    
+    // 如果凭据为空，则不尝试连接
+    if (ssid.empty() || password.empty()) {
+        ESP_LOGW(TAG, "WiFi credentials are empty, skipping connection attempt");
+        return false;
+    }
+    
     initSTA();
 
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -128,8 +152,7 @@ void WiFiManager::disconnect()
     if (m_is_connected)
     {
         esp_wifi_disconnect();
-        esp_wifi_stop();
-        esp_wifi_deinit();
+        // 不要停止或反初始化WiFi，只是断开连接
         m_is_connected = false;
     }
 }

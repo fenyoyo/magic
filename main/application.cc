@@ -331,33 +331,6 @@ void Application::onMQTTMessage(const std::string &topic, const std::string &dat
     }
 }
 
-void Application::onMQTTConnection(bool connected)
-{
-    m_mqtt_connected = connected;
-
-    if (connected)
-    {
-        ESP_LOGI(TAG, "MQTT Connected!");
-
-        // auto &mqtt = MQTTManager::getInstance();
-
-        // 连接成功后发布设备状态
-        // std::string status = m_device_status ? "ON" : "OFF";
-        // mqtt.publish("device/status", status, 1, 1);
-        // int msg_id = esp_mqtt_client_publish(m_client,
-        //                                      m_publish_topic.c_str(),
-        //                                      "ESP32 Connected",
-        //                                      0, 1, 0);
-        // 订阅控制主题
-        // mqtt.subscribe("device/control", 0);
-    }
-    else
-    {
-        ESP_LOGW(TAG, "MQTT Disconnected!");
-        // 可以在这里添加重连逻辑
-    }
-}
-
 void Application::onMQTTError(int error_type, void *error_data)
 {
     ESP_LOGE(TAG, "MQTT Error occurred: %d", error_type);
@@ -382,7 +355,6 @@ void Application::Start()
 {
 
     event_group = xEventGroupCreate();
-    // printf("Application started\n");
     ESP_LOGI(TAG, "Application started");
 
     gpio_set_level(LED_GPIO_R, 1);
@@ -399,9 +371,12 @@ void Application::Start()
     if (!inference_engine.initialize())
     {
         ESP_LOGE(TAG, "推理引擎初始化失败");
-        return;
     }
-    ESP_LOGI(TAG, "推理引擎初始化成功");
+    else
+    {
+
+        ESP_LOGI(TAG, "推理引擎初始化成功");
+    }
 
     // 初始化数据收集索引
     getInstance().collected_data_index = 0;

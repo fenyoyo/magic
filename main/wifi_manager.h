@@ -90,6 +90,7 @@ private:
 private:
     static EventGroupHandle_t s_wifi_event_group;
     static int s_retry_num;
+    static bool s_initialized; // 跟踪是否已初始化
 
     bool m_is_connected;
     esp_ip4_addr_t m_ip_addr;

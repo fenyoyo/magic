@@ -13,6 +13,8 @@
 #include "esp_psram.h"
 #include "application.h"
 #include "NVSManager.h"
+#include "wifi_manager.h"
+#include "mqtt_manager.h"
 #define TAG "BleManager"
 extern "C"
 {
@@ -186,27 +188,6 @@ esp_err_t BleManager::init()
     NVSManager nvsManager("storage");
     nvsManager.init();
     esp_err_t ret;
-
-    // /* Initialize NVS */
-    // ret = nvs_flash_init();
-    // if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    // {
-    //     ESP_ERROR_CHECK(nvs_flash_erase());
-    //     ret = nvs_flash_init();
-    // }
-    // ESP_ERROR_CHECK(ret);
-
-    // Log PSRAM availability at initialization
-    if (esp_psram_get_size() > 0)
-    {
-        size_t psram_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
-        size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-        ESP_LOGI(TAG, "PSRAM available: %zu bytes total, %zu bytes free", psram_size, psram_free);
-    }
-    else
-    {
-        ESP_LOGW(TAG, "PSRAM not available, BLE operations will use DRAM");
-    }
 
     /* Initialize NimBLE stack */
     ret = nimble_port_init();
@@ -695,6 +676,14 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
         if (attr_handle == mqtt_addr_chr_val_handle)
         {
             std::string server_addr = nvsManager.readString("mqtt_server_addr");
+
+            // 如果服务器地址为空，不发送任何内容
+            if (server_addr.empty())
+            {
+                ESP_LOGW(TAG, "MQTT server address is empty, not sending to BLE client");
+                goto error;
+            }
+
             rc = os_mbuf_append(ctxt->om, server_addr.c_str(), server_addr.length());
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
@@ -702,8 +691,14 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
         /* Handle MQTT Username characteristic */
         if (attr_handle == mqtt_username_chr_val_handle)
         {
-
             std::string username = nvsManager.readString("mqtt_username");
+
+            // 如果用户名为空，不发送任何内容
+            if (username.empty())
+            {
+                ESP_LOGW(TAG, "MQTT username is empty, not sending to BLE client");
+                goto error;
+            }
 
             rc = os_mbuf_append(ctxt->om, username.c_str(), username.length());
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -713,6 +708,13 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
         if (attr_handle == mqtt_password_chr_val_handle)
         {
             std::string password = nvsManager.readString("mqtt_password");
+
+            // 如果密码为空，不发送任何内容
+            if (password.empty())
+            {
+                ESP_LOGW(TAG, "MQTT password is empty, not sending to BLE client");
+                goto error;
+            }
 
             rc = os_mbuf_append(ctxt->om, password.c_str(), password.length());
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -747,6 +749,23 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             char server_addr[256] = {0};
             os_mbuf_copydata(ctxt->om, 0, len, server_addr);
 
+            // 检查MQTT服务器地址是否为空或只包含空白字符
+            bool isEmpty = true;
+            for (int i = 0; i < len; i++)
+            {
+                if (server_addr[i] != ' ' && server_addr[i] != '\t' && server_addr[i] != '\n' && server_addr[i] != '\r')
+                {
+                    isEmpty = false;
+                    break;
+                }
+            }
+
+            if (isEmpty)
+            {
+                ESP_LOGW(TAG, "Received empty MQTT server address via BLE, not storing");
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
             nvsManager.writeString("mqtt_server_addr", server_addr);
 
             return 0;
@@ -763,6 +782,23 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
 
             char username[65] = {0};
             os_mbuf_copydata(ctxt->om, 0, len, username);
+
+            // 检查MQTT用户名是否为空或只包含空白字符
+            bool isEmpty = true;
+            for (int i = 0; i < len; i++)
+            {
+                if (username[i] != ' ' && username[i] != '\t' && username[i] != '\n' && username[i] != '\r')
+                {
+                    isEmpty = false;
+                    break;
+                }
+            }
+
+            if (isEmpty)
+            {
+                ESP_LOGW(TAG, "Received empty MQTT username via BLE, not storing");
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
 
             ESP_LOGI(TAG, "Received MQTT Username via BLE: %s", username);
 
@@ -781,6 +817,23 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
 
             char password[65] = {0};
             os_mbuf_copydata(ctxt->om, 0, len, password);
+
+            // 检查MQTT密码是否为空或只包含空白字符
+            bool isEmpty = true;
+            for (int i = 0; i < len; i++)
+            {
+                if (password[i] != ' ' && password[i] != '\t' && password[i] != '\n' && password[i] != '\r')
+                {
+                    isEmpty = false;
+                    break;
+                }
+            }
+
+            if (isEmpty)
+            {
+                ESP_LOGW(TAG, "Received empty MQTT password via BLE, not storing");
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
 
             ESP_LOGI(TAG, "Received MQTT Password via BLE (length: %d)", len);
 
@@ -815,8 +868,9 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
     case BLE_GATT_ACCESS_OP_READ_CHR:
         if (attr_handle == connect_status_chr_val_handle)
         {
-            // TODO 读取 WiFi 连接状态
-            uint8_t connect_status = 1; // 0: 未连接，1: 已连接
+            // 读取 WiFi 连接状态
+            auto &wifi = WiFiManager::getInstance();
+            uint8_t connect_status = wifi.isConnected() ? 1 : 0; // 0: 未连接，1: 已连接
             rc = os_mbuf_append(ctxt->om, &connect_status,
                                 sizeof(connect_status));
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -824,8 +878,9 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
 
         if (attr_handle == mqtt_status_chr_val_handle)
         {
-            // TODO 读取 MQTT 连接状态
-            uint8_t mqtt_status = 1; // 0: 未连接，1: 已连接
+            // 读取 MQTT 连接状态
+            auto &app = MQTTManager::getInstance();
+            uint8_t mqtt_status = app.isConnected() ? 1 : 0; // 0: 未连接，1: 已连接
             rc = os_mbuf_append(ctxt->om, &mqtt_status, sizeof(mqtt_status));
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
@@ -833,9 +888,15 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
         // Read WiFi SSID
         if (attr_handle == ssid_chr_val_handle)
         {
+            std::string ssid_str = nvsManager.readString(WIFI_SSID);
 
-            std::string ssid_str;
-            ssid_str = nvsManager.readString(WIFI_SSID);
+            // 如果SSID为空，不发送任何内容
+            if (ssid_str.empty())
+            {
+                ESP_LOGW(TAG, "WiFi SSID is empty, not sending to BLE client");
+                goto error;
+            }
+
             ESP_LOGI(TAG, "Read WiFi SSID via BLE：%s", ssid_str.c_str());
             rc = os_mbuf_append(ctxt->om, ssid_str.c_str(), ssid_str.length());
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -844,9 +905,15 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
         // Read WiFi Password
         if (attr_handle == password_chr_val_handle)
         {
+            std::string password_str = nvsManager.readString(WIFI_PASSWORD);
 
-            std::string password_str;
-            password_str = nvsManager.readString(WIFI_PASSWORD);
+            // 如果密码为空，不发送任何内容
+            if (password_str.empty())
+            {
+                ESP_LOGW(TAG, "WiFi password is empty, not sending to BLE client");
+                goto error;
+            }
+
             ESP_LOGI(TAG, "Read WiFi Password via BLE:%s", password_str.c_str());
             rc = os_mbuf_append(ctxt->om, password_str.c_str(), password_str.length());
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -881,6 +948,23 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             char ssid[33] = {0}; // 多一个 '\0'
             os_mbuf_copydata(ctxt->om, 0, len, ssid);
 
+            // 检查SSID是否为空或只包含空白字符
+            bool isEmpty = true;
+            for (int i = 0; i < len; i++)
+            {
+                if (ssid[i] != ' ' && ssid[i] != '\t' && ssid[i] != '\n' && ssid[i] != '\r')
+                {
+                    isEmpty = false;
+                    break;
+                }
+            }
+
+            if (isEmpty)
+            {
+                ESP_LOGW(TAG, "Received empty WiFi SSID via BLE, not storing");
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
             ESP_LOGI(TAG, "Received WiFi SSID via BLE: %s", ssid);
 
             // Store the WiFi SSID in NVS
@@ -904,6 +988,23 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             char password[33] = {0}; // 多一个 '\0'
             os_mbuf_copydata(ctxt->om, 0, len, password);
 
+            // 检查密码是否为空或只包含空白字符
+            bool isEmpty = true;
+            for (int i = 0; i < len; i++)
+            {
+                if (password[i] != ' ' && password[i] != '\t' && password[i] != '\n' && password[i] != '\r')
+                {
+                    isEmpty = false;
+                    break;
+                }
+            }
+
+            if (isEmpty)
+            {
+                ESP_LOGW(TAG, "Received empty WiFi password via BLE, not storing");
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
             ESP_LOGI(TAG, "Received WiFi Password via BLE：%s", password);
 
             // Store the WiFi password in NVS
@@ -919,8 +1020,22 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
         }
         if (attr_handle == connect_chr_val_handle)
         {
-            // TODO 根据接收到的 SSID 和 Password 连接 WiFi
+            // 根据存储的 SSID 和 Password 连接 WiFi
+            std::string ssid = nvsManager.readString(WIFI_SSID);
+            std::string password = nvsManager.readString(WIFI_PASSWORD);
+
+            // 检查凭据是否为空
+            if (ssid.empty() || password.empty())
+            {
+                ESP_LOGW(TAG, "Cannot connect: WiFi credentials are empty");
+                goto error;
+            }
+
             ESP_LOGI(TAG, "Received connect command via BLE, connecting to WiFi...");
+
+            // 触发WiFi连接
+            auto &app = Application::getInstance();
+            xEventGroupSetBits(app.event_group, WIFI_CONNECT_BIT);
 
             return 0;
         }

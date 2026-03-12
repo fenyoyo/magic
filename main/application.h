@@ -51,7 +51,6 @@ public:
     void Start();
 
     void onMQTTMessage(const std::string &topic, const std::string &data, int &data_len);
-    void onMQTTConnection(bool connected);
     void onMQTTError(int error_type, void *error_data);
     void publish_inference_result_with_all_scores(int predicted_class, float confidence, float *all_scores, int num_classes);
 
