@@ -7,6 +7,7 @@
 #define BLE_MANAGER_H
 
 #include <cstdint>
+#include <string>
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_uuid.h"
@@ -63,6 +64,12 @@ public:
      * @return Connection handle or BLE_HS_CONN_HANDLE_NONE if not connected
      */
     uint16_t getConnHandle() const { return m_conn_handle; }
+
+    /**
+     * @brief Get Bluetooth MAC address
+     * @return String representation of Bluetooth MAC address (XX:XX:XX:XX:XX:XX)
+     */
+    std::string getBluetoothMacAddress();
 
 private:
     /**
@@ -190,6 +197,8 @@ private:
     static const ble_uuid16_t connect_status_chr_uuid;
     static uint16_t mqtt_status_chr_val_handle;
     static const ble_uuid16_t mqtt_status_chr_uuid;
+    static uint16_t mac_addr_chr_val_handle;
+    static const ble_uuid16_t mac_addr_chr_uuid; // Custom UUID for MAC Address
 
     /* MQTT Configuration service */
     static const ble_uuid16_t mqtt_config_svc_uuid; // Custom UUID for MQTT Configuration Service
@@ -199,6 +208,8 @@ private:
     static const ble_uuid16_t mqtt_username_chr_uuid; // Custom UUID for MQTT Username
     static uint16_t mqtt_password_chr_val_handle;
     static const ble_uuid16_t mqtt_password_chr_uuid; // Custom UUID for MQTT Password
+    static uint16_t mqtt_port_chr_val_handle;
+    static const ble_uuid16_t mqtt_port_chr_uuid; // Custom UUID for MQTT Port
 
     /* GATT services table */
 

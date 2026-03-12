@@ -89,6 +89,7 @@ private:
     std::string m_password;
     std::string m_subscribe_topic;
     std::string m_publish_topic;
+    int m_port; // MQTT端口
 
     // 静态实例指针
     static MQTTManager *s_instance;

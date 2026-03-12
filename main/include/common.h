@@ -31,6 +31,6 @@
 #include "nimble/nimble_port_freertos.h"
 
 /* Defines */
-#define DEVICE_NAME "AMAGIC Wand"
+#define DEVICE_NAME "MagicWand"
 
 #endif // COMMON_H

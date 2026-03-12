@@ -2,15 +2,14 @@
 #include "esp_log.h"
 #include "application.h"
 #include "public.h"
+#include "NVSManager.h"
 #include <string.h>
 
 const char *MQTTManager::TAG = "MQTTManager";
 MQTTManager *MQTTManager::s_instance = nullptr;
 
 MQTTManager::MQTTManager()
-    : m_client(nullptr), m_is_connected(false), m_broker_uri(CONFIG_MQTT_BROKER_URI), m_username(CONFIG_MQTT_USERNAME), m_password(CONFIG_MQTT_PASSWORD),
-      m_subscribe_topic(CONFIG_MQTT_SUBSCRIBE_TOPIC),
-      m_publish_topic(CONFIG_MQTT_PUBLISH_TOPIC)
+    : m_client(nullptr), m_is_connected(false), m_port(1883) // 默认MQTT端口
 {
 }
 
@@ -164,18 +163,56 @@ esp_err_t MQTTManager::init()
         return ESP_OK;
     }
 
-    // 配置MQTT客户端
-    esp_mqtt_client_config_t mqtt_cfg = {};
-    mqtt_cfg.broker.address.uri = m_broker_uri.c_str();
+    // 从NVS中重新读取最新的配置信息
+    NVSManager nvsManager("storage");
+    nvsManager.init();
 
-    if (!m_username.empty())
+    std::string broker_uri = nvsManager.readString("mqtt_server_addr");
+    std::string username = nvsManager.readString("mqtt_username");
+    std::string password = nvsManager.readString("mqtt_password");
+
+    // 读取端口配置，如果未设置则使用默认值
+    int32_t port_value = 0;
+    if (nvsManager.readInt("mqtt_port", &port_value))
     {
-        mqtt_cfg.credentials.username = m_username.c_str();
+        m_port = static_cast<int>(port_value);
+    }
+    else
+    {
+        m_port = 1883; // 默认MQTT端口
     }
 
-    if (!m_password.empty())
+    // 检查必要配置是否存在
+    if (broker_uri.empty())
     {
-        mqtt_cfg.credentials.authentication.password = m_password.c_str();
+        ESP_LOGE(TAG, "MQTT broker URI is not configured in NVS");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (username.empty())
+    {
+        ESP_LOGE(TAG, "MQTT username is not configured in NVS");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (password.empty())
+    {
+        ESP_LOGE(TAG, "MQTT password is not configured in NVS");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // 配置MQTT客户端
+    esp_mqtt_client_config_t mqtt_cfg = {};
+    mqtt_cfg.broker.address.uri = broker_uri.c_str();
+
+    if (!username.empty())
+    {
+        mqtt_cfg.credentials.username = username.c_str();
+    }
+
+    if (!password.empty())
+    {
+        mqtt_cfg.credentials.authentication.password = password.c_str();
     }
 
     // 初始化客户端

@@ -97,6 +97,8 @@ uint16_t BleManager::connect_status_chr_val_handle = 0;
 const ble_uuid16_t BleManager::connect_status_chr_uuid = BLE_UUID16_INIT(0x2A21);
 uint16_t BleManager::mqtt_status_chr_val_handle = 0;
 const ble_uuid16_t BleManager::mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
+uint16_t BleManager::mac_addr_chr_val_handle = 0;
+const ble_uuid16_t BleManager::mac_addr_chr_uuid = BLE_UUID16_INIT(0x2A23); // Custom UUID for MAC Address
 
 const ble_uuid16_t BleManager::mqtt_config_svc_uuid = BLE_UUID16_INIT(0x1889); // Custom UUID for MQTT Configuration Service
 uint16_t BleManager::mqtt_addr_chr_val_handle = 0;
@@ -105,6 +107,8 @@ uint16_t BleManager::mqtt_username_chr_val_handle = 0;
 const ble_uuid16_t BleManager::mqtt_username_chr_uuid = BLE_UUID16_INIT(0x2B02); // Custom UUID for MQTT Username
 uint16_t BleManager::mqtt_password_chr_val_handle = 0;
 const ble_uuid16_t BleManager::mqtt_password_chr_uuid = BLE_UUID16_INIT(0x2B03); // Custom UUID for MQTT Password
+uint16_t BleManager::mqtt_port_chr_val_handle = 0;
+const ble_uuid16_t BleManager::mqtt_port_chr_uuid = BLE_UUID16_INIT(0x2B04); // Custom UUID for MQTT Port
 
 const struct ble_gatt_svc_def BleManager::gatt_svr_svcs[] = {
 
@@ -133,6 +137,10 @@ const struct ble_gatt_svc_def BleManager::gatt_svr_svcs[] = {
                                          .access_cb = ssid_chr_access,
                                          .flags = BLE_GATT_CHR_F_READ,
                                          .val_handle = &mqtt_status_chr_val_handle},
+                                        {.uuid = &mac_addr_chr_uuid.u,
+                                         .access_cb = ssid_chr_access,
+                                         .flags = BLE_GATT_CHR_F_READ,
+                                         .val_handle = &mac_addr_chr_val_handle},
                                         {0}},
     },
 
@@ -160,6 +168,12 @@ const struct ble_gatt_svc_def BleManager::gatt_svr_svcs[] = {
                     .access_cb = mqtt_chr_access,
                     .flags = BLE_GATT_CHR_F_WRITE,
                     .val_handle = &mqtt_password_chr_val_handle},
+                /* MQTT Port characteristic */
+                {
+                    .uuid = &mqtt_port_chr_uuid.u,
+                    .access_cb = mqtt_chr_access,
+                    .flags = BLE_GATT_CHR_F_WRITE,
+                    .val_handle = &mqtt_port_chr_val_handle},
                 {0} // End of characteristics array
             },
     },
@@ -696,6 +710,14 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             goto error;
         }
 
+        /* Handle MQTT Port characteristic - 移除此功能以提高安全性 */
+        if (attr_handle == mqtt_port_chr_val_handle)
+        {
+            // 为防止敏感信息泄露，禁用MQTT端口读取功能
+            ESP_LOGW(TAG, "Attempt to read MQTT port blocked for security reasons");
+            goto error;
+        }
+
         goto error;
 
     /* Write characteristic event */
@@ -818,6 +840,33 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             return 0;
         }
 
+        /* Handle MQTT Port characteristic */
+        if (attr_handle == mqtt_port_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+            if (len != sizeof(int32_t)) // 端口是32位整数
+            {
+                ESP_LOGE(TAG, "Invalid length for MQTT port: %d, expected %d", len, sizeof(int32_t));
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            int32_t port_value;
+            os_mbuf_copydata(ctxt->om, 0, len, &port_value);
+
+            // 验证端口号范围
+            if (port_value <= 0 || port_value > 65535)
+            {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            // ESP_LOGI(TAG, "Received MQTT Port via BLE: %d", port_value);
+
+            // 将端口值存储到NVS
+            nvsManager.writeInt("mqtt_port", port_value);
+
+            return 0;
+        }
+
         goto error;
 
     /* Unknown event */
@@ -875,6 +924,28 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             // 为防止敏感信息泄露，禁用WiFi密码读取功能
             ESP_LOGW(TAG, "Attempt to read WiFi password blocked for security reasons");
             goto error;
+        }
+        ESP_LOGE(TAG, "GET MAC Address");
+        // Read Bluetooth MAC Address
+        if (attr_handle == mac_addr_chr_val_handle)
+        {
+            // 获取蓝牙设备的MAC地址
+            uint8_t mac_addr[6];
+            int rc_mac = ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, mac_addr, NULL);
+            if (rc_mac != 0)
+            {
+                ESP_LOGE(TAG, "Failed to get Bluetooth MAC address, error code: %d", rc_mac);
+                goto error;
+            }
+
+            // 格式化MAC地址为字符串
+            char mac_str[18]; // Format: XX:XX:XX:XX:XX:XX + null terminator
+            snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+                     mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+
+            ESP_LOGI(TAG, "Read Bluetooth MAC Address via BLE: %s", mac_str);
+            rc = os_mbuf_append(ctxt->om, mac_str, strlen(mac_str));
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 
         goto error;
@@ -1019,6 +1090,23 @@ int BleManager::setDeviceName(const char *name)
         ESP_LOGE(TAG, "failed to set device name to %s, error code: %d", name, rc);
     }
     return rc;
+}
+
+std::string BleManager::getBluetoothMacAddress()
+{
+    uint8_t mac_addr[6];
+    int rc = ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, mac_addr, NULL);
+    if (rc != 0)
+    {
+        ESP_LOGE(TAG, "Failed to get Bluetooth MAC address, error code: %d", rc);
+        return "";
+    }
+
+    char mac_str[18]; // Format: XX:XX:XX:XX:XX:XX + null terminator
+    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+
+    return std::string(mac_str);
 }
 
 void BleManager::sendHeartRateIndication(void)
