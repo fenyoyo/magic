@@ -9,6 +9,7 @@
 #define MQTT_ADDR "mqtt_addr"
 #define MQTT_USERNAME "mqtt_username"
 #define MQTT_PASSWORD "mqtt_password"
+#define MQTT_PORT "mqtt_port"
 
 static constexpr EventBits_t WIFI_CONNECT_BIT = (1 << 0);
 static constexpr EventBits_t WIFI_CONNECTED_BIT = (1 << 1);

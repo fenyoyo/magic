@@ -208,6 +208,8 @@ private:
 
     static int ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle,
                                struct ble_gatt_access_ctxt *ctxt, void *arg);
+    static int wifi_connect_chr_access(uint16_t conn_handle, uint16_t attr_handle,
+                                       struct ble_gatt_access_ctxt *ctxt, void *arg);
 
     // /* Automation IO service */
     static const ble_uuid16_t auto_io_svc_uuid;
@@ -225,6 +227,8 @@ private:
     static const ble_uuid16_t mqtt_status_chr_uuid;
     static uint16_t mac_addr_chr_val_handle;
     static const ble_uuid16_t mac_addr_chr_uuid; // Custom UUID for MAC Address
+    static uint16_t wifi_connect_chr_val_handle;
+    static const ble_uuid16_t wifi_connect_chr_uuid; // WiFi Connect characteristic
 
     /* MQTT Configuration service */
     static const ble_uuid16_t mqtt_config_svc_uuid; // Custom UUID for MQTT Configuration Service

@@ -167,13 +167,13 @@ esp_err_t MQTTManager::init()
     NVSManager nvsManager("storage");
     nvsManager.init();
 
-    std::string broker_uri = nvsManager.readString("mqtt_server_addr");
-    std::string username = nvsManager.readString("mqtt_username");
-    std::string password = nvsManager.readString("mqtt_password");
+    std::string broker_uri = nvsManager.readString(MQTT_ADDR);
+    std::string username = nvsManager.readString(MQTT_USERNAME);
+    std::string password = nvsManager.readString(MQTT_PASSWORD);
 
     // 读取端口配置，如果未设置则使用默认值
     int32_t port_value = 0;
-    if (nvsManager.readInt("mqtt_port", &port_value))
+    if (nvsManager.readInt(MQTT_PORT, &port_value))
     {
         m_port = static_cast<int>(port_value);
     }
@@ -185,7 +185,7 @@ esp_err_t MQTTManager::init()
     // 检查必要配置是否存在
     if (broker_uri.empty())
     {
-        ESP_LOGE(TAG, "MQTT broker URI is not configured in NVS");
+        ESP_LOGW(TAG, "MQTT broker URI is not configured in NVS");
         return ESP_ERR_INVALID_ARG;
     }
 

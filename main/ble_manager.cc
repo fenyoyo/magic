@@ -73,6 +73,8 @@ uint16_t BleManager::mqtt_status_chr_val_handle = 0;
 const ble_uuid16_t BleManager::mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
 uint16_t BleManager::mac_addr_chr_val_handle = 0;
 const ble_uuid16_t BleManager::mac_addr_chr_uuid = BLE_UUID16_INIT(0x2A23); // Custom UUID for MAC Address
+uint16_t BleManager::wifi_connect_chr_val_handle = 0;
+const ble_uuid16_t BleManager::wifi_connect_chr_uuid = BLE_UUID16_INIT(0x2A34); // WiFi Connect characteristic
 
 const ble_uuid16_t BleManager::mqtt_config_svc_uuid = BLE_UUID16_INIT(0x1889); // Custom UUID for MQTT Configuration Service
 uint16_t BleManager::mqtt_addr_chr_val_handle = 0;
@@ -103,6 +105,10 @@ const struct ble_gatt_svc_def BleManager::gatt_svr_svcs[] = {
                                          .access_cb = ssid_chr_access,
                                          .flags = BLE_GATT_CHR_F_WRITE,
                                          .val_handle = &connect_chr_val_handle},
+                                        {.uuid = &wifi_connect_chr_uuid.u,
+                                         .access_cb = wifi_connect_chr_access,
+                                         .flags = BLE_GATT_CHR_F_WRITE,
+                                         .val_handle = &wifi_connect_chr_val_handle},
                                         {.uuid = &connect_status_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
                                          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
@@ -263,7 +269,7 @@ void BleManager::heart_rate_task(void *param)
     /* Task entry log */
     ESP_LOGI(TAG, "heart rate task has been started!");
 
-    // TODO 心跳的推送机制不够完善
+    // TODO 心跳的推送机制不够完善,或者在连接事件中推送,而不是每秒推送一次
     while (1)
     {
 
@@ -271,7 +277,7 @@ void BleManager::heart_rate_task(void *param)
                          connect_status_chr_val_handle);
 
         /* Sleep */
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(100000 / portTICK_PERIOD_MS);
     }
 
     /* Clean up at exit */
@@ -780,7 +786,7 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
             }
 
-            nvsManager.writeString("mqtt_server_addr", server_addr);
+            nvsManager.writeString(MQTT_ADDR, server_addr);
 
             return 0;
         }
@@ -797,26 +803,9 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             char username[65] = {0};
             os_mbuf_copydata(ctxt->om, 0, len, username);
 
-            // 检查MQTT用户名是否为空或只包含空白字符
-            bool isEmpty = true;
-            for (int i = 0; i < len; i++)
-            {
-                if (username[i] != ' ' && username[i] != '\t' && username[i] != '\n' && username[i] != '\r')
-                {
-                    isEmpty = false;
-                    break;
-                }
-            }
-
-            if (isEmpty)
-            {
-                ESP_LOGW(TAG, "Received empty MQTT username via BLE, not storing");
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-
             ESP_LOGI(TAG, "Received MQTT Username via BLE: %s", username);
 
-            nvsManager.writeString("mqtt_username", username);
+            nvsManager.writeString(MQTT_USERNAME, username);
             return 0;
         }
 
@@ -851,8 +840,19 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
 
             ESP_LOGI(TAG, "Received MQTT Password via BLE (length: %d)", len);
 
-            nvsManager.writeString("mqtt_password", password);
+            nvsManager.writeString(MQTT_PASSWORD, password);
 
+            // 输出所有mqtt相关的配置信息以供调试
+            std::string stored_addr = nvsManager.readString(MQTT_ADDR);
+            int32_t stored_port;
+            nvsManager.readInt(MQTT_PORT, &stored_port);
+            std::string stored_username = nvsManager.readString(MQTT_USERNAME);
+            std::string stored_password = nvsManager.readString(MQTT_PASSWORD);
+            // 密码不直接输出以保护隐私
+            ESP_LOGI(TAG, "Current MQTT Configuration - Server Address: %s, Port: %ld, Username: %s ,Password: %s",
+                     stored_addr.c_str(), stored_port, stored_username.c_str(), stored_password.c_str());
+            auto &app = Application::getInstance();
+            xEventGroupSetBits(app.event_group, MQTT_CONNECT_BIT);
             return 0;
         }
 
@@ -878,7 +878,7 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             // ESP_LOGI(TAG, "Received MQTT Port via BLE: %d", port_value);
 
             // 将端口值存储到NVS
-            nvsManager.writeInt("mqtt_port", port_value);
+            nvsManager.writeInt(MQTT_PORT, port_value);
 
             return 0;
         }
@@ -1079,10 +1079,6 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
 
             ESP_LOGI(TAG, "Received connect command via BLE, connecting to WiFi...");
 
-            // 触发WiFi连接
-            auto &app = Application::getInstance();
-            xEventGroupSetBits(app.event_group, WIFI_CONNECT_BIT);
-
             return 0;
         }
         goto error;
@@ -1095,6 +1091,90 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
 error:
     ESP_LOGE(TAG,
              "unexpected access operation to WiFi SSID characteristic, opcode: %d",
+             ctxt->op);
+    return BLE_ATT_ERR_UNLIKELY;
+}
+
+int BleManager::wifi_connect_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    NVSManager nvsManager("storage");
+    nvsManager.init();
+
+    /* Local variables */
+    int rc;
+
+    /* Handle access events */
+    switch (ctxt->op)
+    {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+        // 不支持读取操作，返回错误
+        ESP_LOGW(TAG, "Read operation not supported for WiFi Connect characteristic");
+        goto error;
+
+    /* Write characteristic event - this is what triggers WiFi connection */
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+        /* Verify connection handle */
+        if (conn_handle != BLE_HS_CONN_HANDLE_NONE)
+        {
+            ESP_LOGI(TAG, "WiFi Connect characteristic write; conn_handle=%d attr_handle=%d",
+                     conn_handle, attr_handle);
+        }
+        else
+        {
+            ESP_LOGI(TAG,
+                     "WiFi Connect characteristic write by nimble stack; attr_handle=%d",
+                     attr_handle);
+        }
+
+        /* Handle WiFi Connect characteristic */
+        if (attr_handle == wifi_connect_chr_val_handle)
+        {
+            int len = ctxt->om->om_len;
+
+            // 可以选择接受任意长度的数据，因为只需要触发连接动作
+            // 或者验证特定格式的数据，这里我们简单地接受任何非零长度的数据
+            if (len == 0)
+            {
+                ESP_LOGW(TAG, "Received empty WiFi connect command via BLE");
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+
+            // 从存储中获取已保存的 WiFi 凭据
+            std::string ssid = nvsManager.readString(WIFI_SSID);
+            std::string password = nvsManager.readString(WIFI_PASSWORD);
+
+            // 检查凭据是否为空
+            if (ssid.empty())
+            {
+                ESP_LOGW(TAG, "Cannot connect: WiFi SSID is empty");
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+
+            if (password.empty())
+            {
+                ESP_LOGW(TAG, "Cannot connect: WiFi password is empty");
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+
+            ESP_LOGI(TAG, "Received WiFi connect command via BLE, connecting to SSID: %s", ssid.c_str());
+
+            // 触发 WiFi 连接
+            auto &app = Application::getInstance();
+            xEventGroupSetBits(app.event_group, WIFI_CONNECT_BIT);
+
+            return 0;
+        }
+
+        goto error;
+
+    /* Unknown event */
+    default:
+        goto error;
+    }
+
+error:
+    ESP_LOGE(TAG,
+             "unexpected access operation to WiFi Connect characteristic, opcode: %d",
              ctxt->op);
     return BLE_ATT_ERR_UNLIKELY;
 }

@@ -443,8 +443,8 @@ void Application::Start()
 
         if (bits & MQTT_CONNECT_BIT)
         {
-            // auto &mqtt = MQTTManager::getInstance();
-            // mqtt.connect();
+            auto &mqtt = MQTTManager::getInstance();
+            mqtt.init();
         }
         if (bits & MQTT_CONNECTED_BIT)
         {
