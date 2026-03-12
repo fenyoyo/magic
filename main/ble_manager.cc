@@ -53,35 +53,6 @@ BleManager::~BleManager()
     s_ble_manager_instance = nullptr;
 }
 
-// /* Automation IO service */
-// static const ble_uuid16_t auto_io_svc_uuid = BLE_UUID16_INIT(0x1815);
-// static uint16_t ssid_chr_val_handle;
-// static const ble_uuid16_t ssid_chr_uuid = BLE_UUID16_INIT(0x2A31);
-// static uint16_t password_chr_val_handle;
-// static const ble_uuid16_t password_chr_uuid = BLE_UUID16_INIT(0x2A32);
-// static uint16_t connect_chr_val_handle;
-// static const ble_uuid16_t connect_chr_uuid = BLE_UUID16_INIT(0x2A33);
-
-// static uint16_t connect_status_chr_val_handle;
-// static const ble_uuid16_t connect_status_chr_uuid = BLE_UUID16_INIT(0x2A21);
-// static uint16_t mqtt_status_chr_val_handle;
-// static const ble_uuid16_t mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
-
-// /* MQTT Configuration service */
-// static const ble_uuid16_t mqtt_config_svc_uuid = BLE_UUID16_INIT(0x1889); // Custom UUID for MQTT Configuration Service
-// static uint16_t mqtt_addr_chr_val_handle;
-// static const ble_uuid16_t mqtt_addr_chr_uuid = BLE_UUID16_INIT(0x2B01); // Custom UUID for MQTT Server Address
-// static uint16_t mqtt_username_chr_val_handle;
-// static const ble_uuid16_t mqtt_username_chr_uuid = BLE_UUID16_INIT(0x2B02); // Custom UUID for MQTT Username
-// static uint16_t mqtt_password_chr_val_handle;
-// static const ble_uuid16_t mqtt_password_chr_uuid = BLE_UUID16_INIT(0x2B03); // Custom UUID for MQTT Password
-
-// /* Magic Learning service */
-// static const ble_uuid16_t magic_learning_svc_uuid = BLE_UUID16_INIT(0x1890); // Custom UUID for Magic Learning Service
-// static uint16_t magic_enable_chr_val_handle;
-// static const ble_uuid16_t magic_enable_chr_uuid = BLE_UUID16_INIT(0x2C01); // Custom UUID for Magic Enable characteristic
-// /* GATT services table */
-
 const ble_uuid16_t BleManager::magic_learning_svc_uuid = BLE_UUID16_INIT(0x1890); // Custom UUID for Magic Learning Service
 const ble_uuid16_t BleManager::magic_enable_chr_uuid = BLE_UUID16_INIT(0x2C01);   // Custom UUID for Magic Enable characteristic
 uint16_t BleManager::magic_enable_chr_val_handle = 0;                             // 初始化为0
@@ -94,6 +65,9 @@ const ble_uuid16_t BleManager::password_chr_uuid = BLE_UUID16_INIT(0x2A32);
 uint16_t BleManager::connect_chr_val_handle = 0;
 const ble_uuid16_t BleManager::connect_chr_uuid = BLE_UUID16_INIT(0x2A33);
 uint16_t BleManager::connect_status_chr_val_handle = 0;
+// static uint16_t connect_status_chr_conn_handle = 0;
+
+uint16_t BleManager::connect_status_chr_conn_handle = 0;
 const ble_uuid16_t BleManager::connect_status_chr_uuid = BLE_UUID16_INIT(0x2A21);
 uint16_t BleManager::mqtt_status_chr_val_handle = 0;
 const ble_uuid16_t BleManager::mqtt_status_chr_uuid = BLE_UUID16_INIT(0x2A22);
@@ -135,7 +109,7 @@ const struct ble_gatt_svc_def BleManager::gatt_svr_svcs[] = {
                                          .val_handle = &connect_status_chr_val_handle},
                                         {.uuid = &mqtt_status_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
-                                         .flags = BLE_GATT_CHR_F_READ,
+                                         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
                                          .val_handle = &mqtt_status_chr_val_handle},
                                         {.uuid = &mac_addr_chr_uuid.u,
                                          .access_cb = ssid_chr_access,
@@ -271,7 +245,37 @@ esp_err_t BleManager::init()
         return ESP_ERR_NO_MEM;
     }
 
+    BaseType_t heart_rate_task_created = xTaskCreate(heart_rate_task, "Heart Rate", 4 * 1024, NULL, 5, NULL);
+    if (heart_rate_task_created == pdPASS)
+    {
+        ESP_LOGI(TAG, "Heart rate task created successfully");
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to create heart rate task");
+    }
+
     return ESP_OK;
+}
+
+void BleManager::heart_rate_task(void *param)
+{
+    /* Task entry log */
+    ESP_LOGI(TAG, "heart rate task has been started!");
+
+    // TODO 心跳的推送机制不够完善
+    while (1)
+    {
+
+        ble_gatts_notify(connect_status_chr_conn_handle,
+                         connect_status_chr_val_handle);
+
+        /* Sleep */
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+
+    /* Clean up at exit */
+    vTaskDelete(NULL);
 }
 
 void BleManager::configureHost()
@@ -549,8 +553,20 @@ int BleManager::handleSubscribe(struct ble_gap_event *event)
              event->subscribe.cur_notify, event->subscribe.prev_indicate,
              event->subscribe.cur_indicate);
 
-    /* Call GATT subscribe callback */
-    gatt_svr_subscribe_cb(event);
+    // 检查是否是状态特征的订阅
+    if (event->subscribe.attr_handle == connect_status_chr_val_handle)
+    {
+
+        connect_status_chr_conn_handle = event->subscribe.conn_handle; // 存储连接句柄以便发送连接状态通知
+        ESP_LOGI(TAG, "Client subscribed to WiFi status notifications: %s",
+                 event->subscribe.cur_notify ? "YES" : "NO");
+    }
+    else if (event->subscribe.attr_handle == mqtt_status_chr_val_handle)
+    {
+        ESP_LOGI(TAG, "Client subscribed to MQTT status notifications: %s",
+                 event->subscribe.cur_notify ? "YES" : "NO");
+    }
+
     return 0;
 }
 
@@ -896,6 +912,7 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             // 读取 WiFi 连接状态
             auto &wifi = WiFiManager::getInstance();
             uint8_t connect_status = wifi.isConnected() ? 1 : 0; // 0: 未连接，1: 已连接
+            ESP_LOGI(TAG, "WiFi connection status: %s", connect_status ? "CONNECTED" : "DISCONNECTED");
             rc = os_mbuf_append(ctxt->om, &connect_status,
                                 sizeof(connect_status));
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -903,6 +920,7 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
 
         if (attr_handle == mqtt_status_chr_val_handle)
         {
+            ESP_LOGI(TAG, "Read MQTT connection status via BLE");
             // 读取 MQTT 连接状态
             auto &mqtt = MQTTManager::getInstance();
             uint8_t mqtt_status = mqtt.isConnected() ? 1 : 0; // 0: 未连接，1: 已连接
@@ -925,7 +943,6 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             ESP_LOGW(TAG, "Attempt to read WiFi password blocked for security reasons");
             goto error;
         }
-        ESP_LOGE(TAG, "GET MAC Address");
         // Read Bluetooth MAC Address
         if (attr_handle == mac_addr_chr_val_handle)
         {

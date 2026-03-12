@@ -55,25 +55,3 @@ void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
         break;
     }
 }
-
-/*
- *  GATT server subscribe event callback
- *      1. Update heart rate subscription status
- */
-
-void gatt_svr_subscribe_cb(struct ble_gap_event *event)
-{
-    /* Check connection handle */
-    if (event->subscribe.conn_handle != BLE_HS_CONN_HANDLE_NONE)
-    {
-        ESP_LOGI(TAG, "subscribe event; conn_handle=%d attr_handle=%d",
-                 event->subscribe.conn_handle, event->subscribe.attr_handle);
-    }
-    else
-    {
-        ESP_LOGI(TAG, "subscribe by nimble stack; attr_handle=%d",
-                 event->subscribe.attr_handle);
-    }
-
-    /* Check attribute handle */
-}

@@ -47,6 +47,16 @@ public:
     void sendHeartRateIndication();
 
     /**
+     * @brief Start heart rate monitoring
+     */
+    void startHeartRateMonitoring();
+
+    /**
+     * @brief Stop heart rate monitoring
+     */
+    void stopHeartRateMonitoring();
+
+    /**
      * @brief Set device name
      * @param name Device name to be advertised
      * @return 0 on success, error code otherwise
@@ -70,6 +80,18 @@ public:
      * @return String representation of Bluetooth MAC address (XX:XX:XX:XX:XX:XX)
      */
     std::string getBluetoothMacAddress();
+
+    /**
+     * @brief Notify WiFi connection status to subscribed clients
+     * @param connected True if WiFi is connected, false otherwise
+     */
+    void notifyWifiStatus(bool connected);
+
+    /**
+     * @brief Notify MQTT connection status to subscribed clients
+     * @param connected True if MQTT is connected, false otherwise
+     */
+    void notifyMqttStatus(bool connected);
 
 private:
     /**
@@ -149,6 +171,7 @@ private:
      * @return 0 on success
      */
     int handleSubscribe(struct ble_gap_event *event);
+    static void heart_rate_task(void *param);
 
     /**
      * @brief Handle MTU update event
@@ -171,10 +194,12 @@ private:
     static void formatAddr(char *addr_str, uint8_t addr[]);
 
     // Member variables
-    uint8_t m_ownAddrType;  ///< Own address type for advertising
-    uint8_t m_addrVal[6];   ///< Device MAC address
-    bool m_connected;       ///< Connection status
-    uint16_t m_conn_handle; ///< Current connection handle
+    uint8_t m_ownAddrType;        ///< Own address type for advertising
+    uint8_t m_addrVal[6];         ///< Device MAC address
+    bool m_connected;             ///< Connection status
+    uint16_t m_conn_handle;       ///< Current connection handle
+    static uint8_t m_wifi_status; ///< Current WiFi status
+    static uint8_t m_mqtt_status; ///< Current MQTT status
 
     static int magic_learning_chr_access(uint16_t conn_handle, uint16_t attr_handle,
                                          struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -193,6 +218,7 @@ private:
     static uint16_t connect_chr_val_handle;
     static const ble_uuid16_t connect_chr_uuid;
 
+    static uint16_t connect_status_chr_conn_handle;
     static uint16_t connect_status_chr_val_handle;
     static const ble_uuid16_t connect_status_chr_uuid;
     static uint16_t mqtt_status_chr_val_handle;

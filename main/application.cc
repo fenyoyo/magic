@@ -107,14 +107,16 @@ void Application::publish_inference_result_with_all_scores(int predicted_class, 
                           "{\"action\":%d,\"confidence\":%.4f",
                           predicted_class, confidence);
 
-    if (offset < 0 || offset >= sizeof(payload)) {
+    if (offset < 0 || offset >= sizeof(payload))
+    {
         ESP_LOGE(TAG, "snprintf failed or payload too large");
         return;
     }
 
     // 完成JSON字符串
     int result = snprintf(payload + offset, sizeof(payload) - offset, "}");
-    if (result < 0 || result >= sizeof(payload) - offset) {
+    if (result < 0 || result >= sizeof(payload) - offset)
+    {
         ESP_LOGE(TAG, "snprintf failed to complete payload");
         return;
     }
@@ -244,7 +246,7 @@ void Application::mpu6050(void *pvParameters)
                         // 简单的同步机制，使用局部变量避免多次访问共享变量
                         bool is_collecting = app.collecting_data;
                         int current_index = app.collected_data_index;
-                        
+
                         if (is_collecting && current_index < app.kMaxCollectedTimeSteps)
                         {
                             // 存储六轴数据 (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
@@ -263,12 +265,13 @@ void Application::mpu6050(void *pvParameters)
                                 ESP_LOGI(TAG, "Collected maximum data for inference (%d samples)", current_index + 1);
                                 app.collecting_data = false;
                             }
-                            
+
                             should_continue = true;
                         }
                     }
-                    
-                    if (!should_continue) {
+
+                    if (!should_continue)
+                    {
                         // 如果不应继续收集数据，跳出内部循环
                         break;
                     }
@@ -287,7 +290,7 @@ void Application::mpu6050(void *pvParameters)
 
             // 按钮释放后，如果收集到了足够的数据，则执行推理
             int final_collected_count = app.collected_data_index; // 获取最终收集的数据量
-            if (final_collected_count > 50) // 需要超过50个数据点才进行推理
+            if (final_collected_count > 50)                       // 需要超过50个数据点才进行推理
             {
                 ESP_LOGI(TAG, "Executing normalized inference with %d samples", final_collected_count);
 
@@ -446,20 +449,22 @@ void Application::Start()
         if (bits & MQTT_CONNECTED_BIT)
         {
             // 检查任务是否已经存在，如果存在则删除旧任务
-            if (imu_task_handle != NULL) {
+            if (imu_task_handle != NULL)
+            {
                 vTaskDelete(imu_task_handle);
                 imu_task_handle = NULL;
             }
-            if (mqtt_task_handle != NULL) {
+            if (mqtt_task_handle != NULL)
+            {
                 vTaskDelete(mqtt_task_handle);
                 mqtt_task_handle = NULL;
             }
-            
+
             // Initialize i2c
             I2Cdev::initialize(400000);
             // Start imu task - reduce stack size to prevent allocation failure
             BaseType_t mqtt_result = xTaskCreate(&mqtt_trans, "MQTT", 1024 * 8, NULL, 5, &mqtt_task_handle); // Reduced from 8KB to 4KB
-            BaseType_t imu_result = xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, &imu_task_handle);      // Reduced from 8KB to 4KB
+            BaseType_t imu_result = xTaskCreate(&mpu6050, "IMU", 1024 * 8, NULL, 5, &imu_task_handle);       // Reduced from 8KB to 4KB
             if (mqtt_result != pdPASS)
             {
                 ESP_LOGI(TAG, "MQTT任务启动失败");
@@ -478,11 +483,13 @@ void Application::Start()
         if (bits & MQTT_CONNECT_FAIL_BIT)
         {
             // 如果MQTT连接失败，清理任务
-            if (imu_task_handle != NULL) {
+            if (imu_task_handle != NULL)
+            {
                 vTaskDelete(imu_task_handle);
                 imu_task_handle = NULL;
             }
-            if (mqtt_task_handle != NULL) {
+            if (mqtt_task_handle != NULL)
+            {
                 vTaskDelete(mqtt_task_handle);
                 mqtt_task_handle = NULL;
             }
