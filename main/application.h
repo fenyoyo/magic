@@ -65,6 +65,8 @@ public:
     bool collecting_data = false;
 
     EventGroupHandle_t event_group;
+
+    static std::string mac_address;
 };
 
 #endif // _APPLICATION_H_

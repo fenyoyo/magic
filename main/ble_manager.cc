@@ -15,6 +15,7 @@
 #include "NVSManager.h"
 #include "wifi_manager.h"
 #include "mqtt_manager.h"
+#include "board.h"
 #define TAG "BleManager"
 extern "C"
 {
@@ -851,6 +852,7 @@ int BleManager::mqtt_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
             // 密码不直接输出以保护隐私
             ESP_LOGI(TAG, "Current MQTT Configuration - Server Address: %s, Port: %ld, Username: %s ,Password: %s",
                      stored_addr.c_str(), stored_port, stored_username.c_str(), stored_password.c_str());
+
             auto &app = Application::getInstance();
             xEventGroupSetBits(app.event_group, MQTT_CONNECT_BIT);
             return 0;
@@ -946,22 +948,10 @@ int BleManager::ssid_chr_access(uint16_t conn_handle, uint16_t attr_handle, ble_
         // Read Bluetooth MAC Address
         if (attr_handle == mac_addr_chr_val_handle)
         {
-            // 获取蓝牙设备的MAC地址
-            uint8_t mac_addr[6];
-            int rc_mac = ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, mac_addr, NULL);
-            if (rc_mac != 0)
-            {
-                ESP_LOGE(TAG, "Failed to get Bluetooth MAC address, error code: %d", rc_mac);
-                goto error;
-            }
+            std::string mac = Board::getDeviceId();
 
-            // 格式化MAC地址为字符串
-            char mac_str[18]; // Format: XX:XX:XX:XX:XX:XX + null terminator
-            snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
-                     mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-
-            ESP_LOGI(TAG, "Read Bluetooth MAC Address via BLE: %s", mac_str);
-            rc = os_mbuf_append(ctxt->om, mac_str, strlen(mac_str));
+            ESP_LOGI(TAG, "Read Bluetooth MAC Address via BLE: %s", mac.c_str());
+            rc = os_mbuf_append(ctxt->om, mac.c_str(), mac.length());
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 
@@ -1188,24 +1178,6 @@ int BleManager::setDeviceName(const char *name)
     }
     return rc;
 }
-
-std::string BleManager::getBluetoothMacAddress()
-{
-    uint8_t mac_addr[6];
-    int rc = ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, mac_addr, NULL);
-    if (rc != 0)
-    {
-        ESP_LOGE(TAG, "Failed to get Bluetooth MAC address, error code: %d", rc);
-        return "";
-    }
-
-    char mac_str[18]; // Format: XX:XX:XX:XX:XX:XX + null terminator
-    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
-             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-
-    return std::string(mac_str);
-}
-
 void BleManager::sendHeartRateIndication(void)
 {
     // TODO: Implement heart rate indication

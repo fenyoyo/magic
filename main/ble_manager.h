@@ -76,12 +76,6 @@ public:
     uint16_t getConnHandle() const { return m_conn_handle; }
 
     /**
-     * @brief Get Bluetooth MAC address
-     * @return String representation of Bluetooth MAC address (XX:XX:XX:XX:XX:XX)
-     */
-    std::string getBluetoothMacAddress();
-
-    /**
      * @brief Notify WiFi connection status to subscribed clients
      * @param connected True if WiFi is connected, false otherwise
      */

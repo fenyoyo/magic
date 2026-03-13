@@ -28,7 +28,6 @@
 // #include "ssd1306.h"
 #include "time_series_normalizer.h"
 #include "public.h"
-
 #define TAG "Application"
 
 #define GYRO_STREAM_MS 20
@@ -120,10 +119,11 @@ void Application::publish_inference_result_with_all_scores(int predicted_class, 
         ESP_LOGE(TAG, "snprintf failed to complete payload");
         return;
     }
-
+    std::string topic = "/events/predict";
+    std::string full_topic = mac_address + topic;
     // 发布推理结果到指定主题
     size_t payload_len = strlen(payload);
-    esp_err_t ret = mqtt.publish("1a2c27b0047/events/predict", payload, payload_len, 0, 0);
+    esp_err_t ret = mqtt.publish(full_topic, payload, payload_len, 0, 0);
     if (ret == ESP_OK)
     {
         ESP_LOGI(TAG, "推理结果已发布到MQTT: 类别=%d, 置信度=%.4f, 总类别数=%d", predicted_class, confidence, num_classes);
@@ -382,15 +382,17 @@ void Application::onMQTTError(int error_type, void *error_data)
 QueueHandle_t Application::xQueueTrans = nullptr;
 static TaskHandle_t imu_task_handle = NULL;
 static TaskHandle_t mqtt_task_handle = NULL;
+std::string Application::mac_address = "";
 
 void Application::Start()
 {
-
     event_group = xEventGroupCreate();
     ESP_LOGI(TAG, "Application started");
 
     gpio_set_level(LED_GPIO_R, 1);
     // 第一步启动wifi
+    mac_address = Board::getDeviceId2();
+
     Board &board = Board::getInstance();
     // 尝试wifi连接
     board.StartNetwork();
@@ -444,6 +446,11 @@ void Application::Start()
         if (bits & MQTT_CONNECT_BIT)
         {
             auto &mqtt = MQTTManager::getInstance();
+            if (mqtt.isConnected())
+            {
+                mqtt.stop();
+            }
+
             mqtt.init();
         }
         if (bits & MQTT_CONNECTED_BIT)

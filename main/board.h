@@ -36,7 +36,8 @@ public:
     // OLED *getOLED() { return m_oled; }
 
     // 设备ID相关方法
-    std::string getDeviceId();
+    static std::string getDeviceId();
+    static std::string getDeviceId2();
 };
 
 #endif
