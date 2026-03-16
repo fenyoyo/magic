@@ -28,6 +28,7 @@
 // #include "ssd1306.h"
 #include "time_series_normalizer.h"
 #include "public.h"
+#include "led_service.h"
 #define TAG "Application"
 
 #define GYRO_STREAM_MS 20
@@ -386,10 +387,19 @@ std::string Application::mac_address = "";
 
 void Application::Start()
 {
+    auto &ledService = LedService::getInstance();
+
+    LedConfig ledConfig = {
+        .gpio = 48,                // 根据你的硬件连接修改GPIO
+        .num_leds = 1,             // LED数量
+        .model = LED_MODEL_WS2812, // LED型号
+        .invert_output = false     // 不反转输出
+    };
+    ledService.init(ledConfig);
+
     event_group = xEventGroupCreate();
     ESP_LOGI(TAG, "Application started");
 
-    gpio_set_level(LED_GPIO_R, 1);
     // 第一步启动wifi
     mac_address = Board::getDeviceId2();
 
@@ -410,6 +420,45 @@ void Application::Start()
     {
         ESP_LOGI(TAG, "推理引擎初始化成功");
     }
+
+    // auto &ledService = LedService::getInstance();
+
+    // if (!ledService.isInitialized())
+    // {
+    //     ESP_LOGW(TAG, "LED service not initialized, skipping test");
+
+    //     LedConfig ledConfig = {
+    //         .gpio = 48,                // 根据你的硬件连接修改GPIO
+    //         .num_leds = 1,             // LED数量
+    //         .model = LED_MODEL_WS2812, // LED型号
+    //         .invert_output = false     // 不反转输出
+    //     };
+    //     ledService.init(ledConfig);
+    // }
+
+    // ESP_LOGI(TAG, "Testing LED service events...");
+
+    // // 测试各种LED事件
+    // ledService.triggerEvent(LedEvent::PowerOn);
+    // vTaskDelay(pdMS_TO_TICKS(2000));
+
+    // ledService.triggerEvent(LedEvent::WifiConnect);
+    // vTaskDelay(pdMS_TO_TICKS(2000));
+
+    // ledService.triggerEvent(LedEvent::WifiDisconnect);
+    // vTaskDelay(pdMS_TO_TICKS(2000));
+
+    // ledService.triggerEvent(LedEvent::GameStart);
+    // vTaskDelay(pdMS_TO_TICKS(2000));
+
+    // ledService.triggerEvent(LedEvent::Victory);
+    // vTaskDelay(pdMS_TO_TICKS(2000));
+
+    // ledService.triggerEvent(LedEvent::Alert);
+    // vTaskDelay(pdMS_TO_TICKS(2000));
+
+    // ledService.triggerEvent(LedEvent::Off);
+    // ESP_LOGI(TAG, "LED service test completed");
 
     // 初始化数据收集索引
     getInstance().collected_data_index = 0;
@@ -435,6 +484,7 @@ void Application::Start()
         }
         if (bits & WIFI_CONNECTED_BIT)
         {
+            ledService.triggerEvent(LedEvent::WifiConnect);
             auto &mqtt = MQTTManager::getInstance();
             mqtt.init();
         }
