@@ -34,25 +34,28 @@ void MQTTManager::handleConnected(esp_mqtt_event_handle_t event)
     m_is_connected = true;
     auto &app = Application::getInstance();
     xEventGroupSetBits(app.event_group, MQTT_CONNECTED_BIT);
+
+    subscribe(app.mac_address + "/events/predict/result", 1);
 }
 
 void MQTTManager::handleDisconnected()
 {
     ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
     m_is_connected = false;
-
-    // // 触发连接回调
-    // if (m_connection_callback)
-    // {
-    //     m_connection_callback(false);
-    // }
 }
 
 void MQTTManager::handleData(esp_mqtt_event_handle_t event)
 {
-    ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-    ESP_LOGI(TAG, "TOPIC=%.*s", event->topic_len, event->topic);
-    ESP_LOGI(TAG, "DATA=%.*s", event->data_len, event->data);
+    std::string topic_str(event->topic, event->topic_len);
+    auto &app = Application::getInstance();
+    std::string topic = app.mac_address + "/events/predict/result";
+    if (topic_str == topic)
+    {
+        ESP_LOGI(TAG, "Received inference result on topic: %s", topic.c_str());
+        std::string data_str(event->data, event->data_len);
+        ESP_LOGI(TAG, "Data: %s", data_str.c_str());
+        LedService::getInstance().triggerEvent(LedEvent::GameStart);
+    }
 
     // 触发消息回调
     // if (m_message_callback)

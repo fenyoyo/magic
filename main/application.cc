@@ -473,8 +473,6 @@ void Application::Start()
     getInstance().collected_data_index = 0;
     getInstance().collecting_data = false;
 
-    gpio_set_level(LED_GPIO_R, 0);
-
     // 监控内存使用情况并保持应用运行
     while (1)
     {
@@ -493,7 +491,7 @@ void Application::Start()
         }
         if (bits & WIFI_CONNECTED_BIT)
         {
-            getLedService().triggerEvent(LedEvent::WifiConnect);
+            // getLedService().triggerEvent(LedEvent::WifiConnect);
             auto &mqtt = MQTTManager::getInstance();
             mqtt.init();
         }
@@ -547,15 +545,19 @@ void Application::Start()
 
                 // MPU6050 初始化成功后，启动 LED 服务任务
                 esp_err_t led_task_ret = getLedService().startTask();
-                if (led_task_ret != ESP_OK)
-                {
-                    ESP_LOGE(TAG, "Failed to start LED service task: %s", esp_err_to_name(led_task_ret));
-                }
-                else
-                {
-                    ESP_LOGI(TAG, "LED service task started after MPU6050 initialization");
-                }
+                // if (led_task_ret != ESP_OK)
+                // {
+                //     ESP_LOGE(TAG, "Failed to start LED service task: %s", esp_err_to_name(led_task_ret));
+                // }
+                // else
+                // {
+                //     ESP_LOGI(TAG, "LED service task started after MPU6050 initialization");
+                // }
             }
+
+            size_t internal_ram_total = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+            ESP_LOGI(TAG, "内部 SRAM 剩余: %zu KB (%zu 字节)",
+                     internal_ram_total / 1024, internal_ram_total);
         }
         if (bits & MQTT_CONNECT_FAIL_BIT)
         {
