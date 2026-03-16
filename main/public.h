@@ -11,6 +11,10 @@
 #define MQTT_PASSWORD "mqtt_password"
 #define MQTT_PORT "mqtt_port"
 
+#include "host/ble_gap.h"
+#include "host/ble_gatt.h"
+#include "host/ble_uuid.h"
+
 static constexpr EventBits_t WIFI_CONNECT_BIT = (1 << 0);
 static constexpr EventBits_t WIFI_CONNECTED_BIT = (1 << 1);
 static constexpr EventBits_t WIFI_CONNECT_FAIL_BIT = (1 << 2);

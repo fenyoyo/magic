@@ -1,6 +1,5 @@
 # 主组件
-file(GLOB_RECURSE srcs "src/*.c")
-idf_component_register(SRCS "inference_engine.cc" "time_series_normalizer.cc" "main.cc" "mqtt_manager.cc" "application.cc" "board.cc" "wifi_manager.cc" "ble_manager.cc" "person_detect_model_data.cc" "${srcs}" "NVSManager.cc"
+idf_component_register(SRCS "inference_engine.cc" "time_series_normalizer.cc" "main.cc" "mqtt_manager.cc" "application.cc" "board.cc" "wifi_manager.cc" "ble_manager.cc" "person_detect_model_data.cc" "NVSManager.cc"
                     PRIV_REQUIRES esp_wifi nvs_flash freertos mqtt driver esp-tflite-micro efuse bt esp_psram
                     REQUIRES MPU6050
                     INCLUDE_DIRS "."  "./include")

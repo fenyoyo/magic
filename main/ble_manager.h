@@ -8,10 +8,24 @@
 
 #include <cstdint>
 #include <string>
+#include "public.h"
+
+extern "C"
+{
+#include "host/ble_hs.h"
+#include "host/ble_uuid.h"
+#include "host/util/util.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_uuid.h"
-#include "public.h"
+#include "nimble/ble.h"
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
+    void ble_store_config_init(void);
+    void gatt_svr_subscribe_cb(struct ble_gap_event *event);
+}
 
 /**
  * @brief BLE Manager class for handling NimBLE stack operations
@@ -186,6 +200,8 @@ private:
      * @param addr MAC address bytes
      */
     static void formatAddr(char *addr_str, uint8_t addr[]);
+
+    static void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg);
 
     // Member variables
     uint8_t m_ownAddrType;        ///< Own address type for advertising

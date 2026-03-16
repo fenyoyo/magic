@@ -17,15 +17,8 @@
 #include "mqtt_manager.h"
 #include "board.h"
 #define TAG "BleManager"
-extern "C"
-{
-#include "gap.h"
-#include "gatt_svc.h"
-    void ble_store_config_init(void);
-    void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg);
-    void gatt_svr_subscribe_cb(struct ble_gap_event *event);
-}
-
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 // Tag for logging
 
 // URI for advertising
@@ -191,9 +184,13 @@ esp_err_t BleManager::init()
         ESP_LOGE(TAG, "failed to initialize nimble stack, error code: %d", ret);
         return ret;
     }
+    /* Call NimBLE GAP initialization API */
+    ble_svc_gap_init();
 
+    /* Set GAP device name */
+    ret = ble_svc_gap_device_name_set("MagicWand");
     /* Initialize GAP service */
-    ret = gap_init();
+    // ret = gap_init();
     if (ret != 0)
     {
         ESP_LOGE(TAG, "failed to initialize GAP service, error code: %d", ret);
@@ -1182,4 +1179,43 @@ void BleManager::sendHeartRateIndication(void)
 {
     // TODO: Implement heart rate indication
     ESP_LOGD(TAG, "sendHeartRateIndication called");
+}
+
+void BleManager::gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
+{
+    /* Local variables */
+    char buf[BLE_UUID_STR_LEN];
+
+    /* Handle GATT attributes register events */
+    switch (ctxt->op)
+    {
+
+    /* Service register event */
+    case BLE_GATT_REGISTER_OP_SVC:
+        ESP_LOGD(TAG, "registered service %s with handle=%d",
+                 ble_uuid_to_str(ctxt->svc.svc_def->uuid, buf),
+                 ctxt->svc.handle);
+        break;
+
+    /* Characteristic register event */
+    case BLE_GATT_REGISTER_OP_CHR:
+        ESP_LOGD(TAG,
+                 "registering characteristic %s with "
+                 "def_handle=%d val_handle=%d",
+                 ble_uuid_to_str(ctxt->chr.chr_def->uuid, buf),
+                 ctxt->chr.def_handle, ctxt->chr.val_handle);
+        break;
+
+    /* Descriptor register event */
+    case BLE_GATT_REGISTER_OP_DSC:
+        ESP_LOGD(TAG, "registering descriptor %s with handle=%d",
+                 ble_uuid_to_str(ctxt->dsc.dsc_def->uuid, buf),
+                 ctxt->dsc.handle);
+        break;
+
+    /* Unknown event */
+    default:
+        assert(0);
+        break;
+    }
 }
