@@ -387,16 +387,6 @@ std::string Application::mac_address = "";
 
 void Application::Start()
 {
-    auto &ledService = LedService::getInstance();
-
-    LedConfig ledConfig = {
-        .gpio = 48,                // 根据你的硬件连接修改GPIO
-        .num_leds = 1,             // LED数量
-        .model = LED_MODEL_WS2812, // LED型号
-        .invert_output = false     // 不反转输出
-    };
-    ledService.init(ledConfig);
-
     event_group = xEventGroupCreate();
     ESP_LOGI(TAG, "Application started");
 
@@ -419,6 +409,25 @@ void Application::Start()
     else
     {
         ESP_LOGI(TAG, "推理引擎初始化成功");
+    }
+
+    // 初始化 LED 服务 - 仅初始化设备但不启动任务
+    auto &ledService = getLedService();
+
+    LedConfig ledConfig = {
+        .gpio = 48,                // 根据你的硬件连接修改GPIO
+        .num_leds = 1,             // LED数量
+        .model = LED_MODEL_WS2812, // LED型号
+        .invert_output = false     // 不反转输出
+    };
+    esp_err_t led_init_ret = ledService.init(ledConfig);
+    if (led_init_ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to initialize LED service: %s", esp_err_to_name(led_init_ret));
+    }
+    else
+    {
+        ESP_LOGI(TAG, "LED service device initialized, task will start after MPU6050");
     }
 
     // auto &ledService = LedService::getInstance();
@@ -484,7 +493,7 @@ void Application::Start()
         }
         if (bits & WIFI_CONNECTED_BIT)
         {
-            ledService.triggerEvent(LedEvent::WifiConnect);
+            getLedService().triggerEvent(LedEvent::WifiConnect);
             auto &mqtt = MQTTManager::getInstance();
             mqtt.init();
         }
@@ -535,6 +544,17 @@ void Application::Start()
             if (imu_result == pdPASS)
             {
                 ESP_LOGI(TAG, "魔杖已经连接到MQTT服务器，IMU任务已启动");
+
+                // MPU6050 初始化成功后，启动 LED 服务任务
+                esp_err_t led_task_ret = getLedService().startTask();
+                if (led_task_ret != ESP_OK)
+                {
+                    ESP_LOGE(TAG, "Failed to start LED service task: %s", esp_err_to_name(led_task_ret));
+                }
+                else
+                {
+                    ESP_LOGI(TAG, "LED service task started after MPU6050 initialization");
+                }
             }
         }
         if (bits & MQTT_CONNECT_FAIL_BIT)

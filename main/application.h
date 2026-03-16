@@ -8,6 +8,7 @@
 #include "inference_engine.h"
 #include "time_series_normalizer.h"
 #include "freertos/event_groups.h"
+#include "led_service.h"
 // 定义推理结果的MQTT主题
 #ifndef CONFIG_MQTT_INFERENCE_RESULT_TOPIC
 #define CONFIG_MQTT_INFERENCE_RESULT_TOPIC "/device/inference/result"
@@ -67,6 +68,12 @@ public:
     EventGroupHandle_t event_group;
 
     static std::string mac_address;
+
+    // LED 服务实例
+    LedService &getLedService()
+    {
+        return LedService::getInstance();
+    }
 };
 
 #endif // _APPLICATION_H_

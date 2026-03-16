@@ -42,8 +42,11 @@ public:
     // 单例模式获取实例
     static LedService &getInstance();
 
-    // 初始化LED服务
+    // 初始化LED服务（但不启动任务）
     esp_err_t init(const LedConfig &config);
+
+    // 启动LED服务任务
+    esp_err_t startTask();
 
     // 停止LED服务
     esp_err_t deinit();
@@ -137,6 +140,9 @@ private:
 
     // 任务句柄
     TaskHandle_t m_ledTaskHandle;
+
+    // 任务是否已启动
+    bool m_taskStarted;
 
     // 自定义事件处理器
     std::function<void(LedEvent)> m_eventHandler;

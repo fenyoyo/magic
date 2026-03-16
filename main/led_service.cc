@@ -2,7 +2,7 @@
 #include "esp_log.h"
 #include "math.h"
 
-static const char *TAG = "LED_SERVICE_CPP";
+static const char *TAG = "LED_SERVICE";
 
 // 单例实例
 LedService &LedService::getInstance()
@@ -12,7 +12,7 @@ LedService &LedService::getInstance()
 }
 
 LedService::LedService()
-    : m_ledStrip(nullptr), m_ledEventQueue(nullptr), m_brightness(255), m_serviceInitialized(false), m_ledTaskHandle(nullptr), m_eventHandler(nullptr)
+    : m_ledStrip(nullptr), m_ledEventQueue(nullptr), m_brightness(255), m_serviceInitialized(false), m_ledTaskHandle(nullptr), m_taskStarted(false), m_eventHandler(nullptr)
 {
     // 构造函数
 }
@@ -62,33 +62,51 @@ esp_err_t LedService::init(const LedConfig &config)
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to create LED strip device");
+        vQueueDelete(m_ledEventQueue);
+        m_ledEventQueue = nullptr;
         return ret;
     }
 
     // 清空灯带（确保所有LED熄灭）
     led_strip_clear(m_ledStrip);
 
+    m_serviceInitialized = true;
+    m_taskStarted = false; // 任务尚未启动
+    ESP_LOGI(TAG, "LED service initialized (task not started yet)");
+    return ESP_OK;
+}
+
+esp_err_t LedService::startTask()
+{
+    if (!m_serviceInitialized)
+    {
+        ESP_LOGE(TAG, "LED service not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (m_taskStarted)
+    {
+        ESP_LOGW(TAG, "LED service task already started");
+        return ESP_OK; // 已经启动了，返回成功
+    }
+
     // 创建LED服务任务
     BaseType_t task_ret = xTaskCreate(
         LedService::ledServiceTask,
         "led_service_cpp_task",
-        4096,
+        4096, // 使用足够的堆栈大小
         this, // 传递this指针
-        5,
+        3,    // 降低优先级
         &m_ledTaskHandle);
 
     if (task_ret != pdTRUE)
     {
         ESP_LOGE(TAG, "Failed to create LED service task");
-        led_strip_del(m_ledStrip);
-        m_ledStrip = nullptr;
-        vQueueDelete(m_ledEventQueue);
-        m_ledEventQueue = nullptr;
         return ESP_FAIL;
     }
 
-    m_serviceInitialized = true;
-    ESP_LOGI(TAG, "LED service initialized successfully");
+    m_taskStarted = true;
+    ESP_LOGI(TAG, "LED service task started successfully");
     return ESP_OK;
 }
 
@@ -105,6 +123,7 @@ esp_err_t LedService::deinit()
     {
         vTaskDelete(m_ledTaskHandle);
         m_ledTaskHandle = nullptr;
+        m_taskStarted = false;
     }
 
     // 删除队列
@@ -135,7 +154,7 @@ esp_err_t LedService::triggerEvent(LedEvent event)
     }
 
     // 尝试发送事件到队列
-    BaseType_t ret = xQueueSend(m_ledEventQueue, &event, 0);
+    BaseType_t ret = xQueueSend(m_ledEventQueue, &event, pdMS_TO_TICKS(10)); // 等待最多10ms
     if (ret != pdTRUE)
     {
         ESP_LOGW(TAG, "Failed to send event to LED queue");
@@ -185,6 +204,8 @@ void LedService::ledServiceTask(void *arg)
         if (xQueueReceive(self->m_ledEventQueue, &event, portMAX_DELAY) == pdTRUE)
         {
             self->handleLedEvent(event);
+            // 在处理完一个事件后短暂让出CPU，防止长时间占用
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
 }
@@ -379,14 +400,17 @@ void LedService::chaseEffect(uint8_t red, uint8_t green, uint8_t blue)
 
 void LedService::rainbowChaseEffect()
 {
+    HsvColor hsv_temp;
+    RgbColor rgb_temp;
+
     for (int cycle = 0; cycle < 3; cycle++)
     {
         for (int i = 0; i < m_ledConfig.num_leds; i++)
         {
             clearAllLeds();
-            HsvColor hsv = {(float)(i * 360 / m_ledConfig.num_leds), 1.0f, 1.0f};
-            RgbColor rgb = hsvToRgb(hsv);
-            led_strip_set_pixel(m_ledStrip, i, applyBrightness(rgb.r), applyBrightness(rgb.g), applyBrightness(rgb.b));
+            hsv_temp = {(float)(i * 360 / m_ledConfig.num_leds), 1.0f, 1.0f};
+            rgb_temp = hsvToRgb(hsv_temp);
+            led_strip_set_pixel(m_ledStrip, i, applyBrightness(rgb_temp.r), applyBrightness(rgb_temp.g), applyBrightness(rgb_temp.b));
             led_strip_refresh(m_ledStrip);
             vTaskDelay(pdMS_TO_TICKS(100));
         }
@@ -407,13 +431,13 @@ void LedService::waveEffect(uint8_t red, uint8_t green, uint8_t blue)
             for (int i = 0; i < m_ledConfig.num_leds; i++)
             {
                 float distance = fabsf(i - pos);
-                if (distance < 3)
+                if (distance < 3.0f)
                 { // 在波峰附近点亮LED
                     float intensity = 1.0f - (distance / 3.0f);
-                    led_strip_set_pixel(m_ledStrip, i,
-                                        applyBrightness((uint8_t)(red * intensity)),
-                                        applyBrightness((uint8_t)(green * intensity)),
-                                        applyBrightness((uint8_t)(blue * intensity)));
+                    uint8_t r = applyBrightness((uint8_t)(red * intensity));
+                    uint8_t g = applyBrightness((uint8_t)(green * intensity));
+                    uint8_t b = applyBrightness((uint8_t)(blue * intensity));
+                    led_strip_set_pixel(m_ledStrip, i, r, g, b);
                 }
             }
             led_strip_refresh(m_ledStrip);
@@ -427,13 +451,13 @@ void LedService::waveEffect(uint8_t red, uint8_t green, uint8_t blue)
             for (int i = 0; i < m_ledConfig.num_leds; i++)
             {
                 float distance = fabsf(i - pos);
-                if (distance < 3)
+                if (distance < 3.0f)
                 { // 在波峰附近点亮LED
                     float intensity = 1.0f - (distance / 3.0f);
-                    led_strip_set_pixel(m_ledStrip, i,
-                                        applyBrightness((uint8_t)(red * intensity)),
-                                        applyBrightness((uint8_t)(green * intensity)),
-                                        applyBrightness((uint8_t)(blue * intensity)));
+                    uint8_t r = applyBrightness((uint8_t)(red * intensity));
+                    uint8_t g = applyBrightness((uint8_t)(green * intensity));
+                    uint8_t b = applyBrightness((uint8_t)(blue * intensity));
+                    led_strip_set_pixel(m_ledStrip, i, r, g, b);
                 }
             }
             led_strip_refresh(m_ledStrip);
@@ -445,16 +469,25 @@ void LedService::waveEffect(uint8_t red, uint8_t green, uint8_t blue)
 
 void LedService::rainbowEffect()
 {
+    HsvColor hsv_temp;
+    RgbColor rgb_temp;
+
     for (int hue = 0; hue < 360; hue += 10)
     {
         for (int i = 0; i < m_ledConfig.num_leds; i++)
         {
-            HsvColor hsv = {(float)(hue + (i * 60)), 1.0f, 1.0f};
-            RgbColor rgb = hsvToRgb(hsv);
-            led_strip_set_pixel(m_ledStrip, i, applyBrightness(rgb.r), applyBrightness(rgb.g), applyBrightness(rgb.b));
+            hsv_temp = {(float)(hue + (i * 60)), 1.0f, 1.0f};
+            rgb_temp = hsvToRgb(hsv_temp);
+            led_strip_set_pixel(m_ledStrip, i, applyBrightness(rgb_temp.r), applyBrightness(rgb_temp.g), applyBrightness(rgb_temp.b));
         }
         led_strip_refresh(m_ledStrip);
         vTaskDelay(pdMS_TO_TICKS(50));
+
+        // 定期让出CPU，防止长时间占用
+        if (hue % 50 == 0)
+        { // 每处理大约5个hue值就让出一次CPU
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
     }
     clearAllLeds();
 }
@@ -465,11 +498,23 @@ void LedService::breathingEffect(uint8_t red, uint8_t green, uint8_t blue)
     {
         setAllLeds((red * i) / 255, (green * i) / 255, (blue * i) / 255);
         vTaskDelay(pdMS_TO_TICKS(30));
+
+        // 定期让出CPU，防止长时间占用
+        if (i % 50 == 0)
+        { // 每50个步进让出一次CPU
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
     }
     for (int i = 255; i >= 0; i -= 5)
     {
         setAllLeds((red * i) / 255, (green * i) / 255, (blue * i) / 255);
         vTaskDelay(pdMS_TO_TICKS(30));
+
+        // 定期让出CPU，防止长时间占用
+        if ((255 - i) % 50 == 0)
+        { // 每50个步进让出一次CPU
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
     }
     clearAllLeds();
 }
@@ -492,37 +537,42 @@ LedService::RgbColor LedService::hsvToRgb(HsvColor hsv)
     float q = hsv.v * (1 - hsv.s * f);
     float t = hsv.v * (1 - hsv.s * (1 - f));
 
+    uint8_t v_scaled = (uint8_t)(hsv.v * 255);
+    uint8_t p_scaled = (uint8_t)(p * 255);
+    uint8_t q_scaled = (uint8_t)(q * 255);
+    uint8_t t_scaled = (uint8_t)(t * 255);
+
     switch (i % 6)
     {
     case 0:
-        rgb.r = (uint8_t)(hsv.v * 255);
-        rgb.g = (uint8_t)(t * 255);
-        rgb.b = (uint8_t)(p * 255);
+        rgb.r = v_scaled;
+        rgb.g = t_scaled;
+        rgb.b = p_scaled;
         break;
     case 1:
-        rgb.r = (uint8_t)(q * 255);
-        rgb.g = (uint8_t)(hsv.v * 255);
-        rgb.b = (uint8_t)(p * 255);
+        rgb.r = q_scaled;
+        rgb.g = v_scaled;
+        rgb.b = p_scaled;
         break;
     case 2:
-        rgb.r = (uint8_t)(p * 255);
-        rgb.g = (uint8_t)(hsv.v * 255);
-        rgb.b = (uint8_t)(t * 255);
+        rgb.r = p_scaled;
+        rgb.g = v_scaled;
+        rgb.b = t_scaled;
         break;
     case 3:
-        rgb.r = (uint8_t)(p * 255);
-        rgb.g = (uint8_t)(q * 255);
-        rgb.b = (uint8_t)(hsv.v * 255);
+        rgb.r = p_scaled;
+        rgb.g = q_scaled;
+        rgb.b = v_scaled;
         break;
     case 4:
-        rgb.r = (uint8_t)(t * 255);
-        rgb.g = (uint8_t)(p * 255);
-        rgb.b = (uint8_t)(hsv.v * 255);
+        rgb.r = t_scaled;
+        rgb.g = p_scaled;
+        rgb.b = v_scaled;
         break;
     case 5:
-        rgb.r = (uint8_t)(hsv.v * 255);
-        rgb.g = (uint8_t)(p * 255);
-        rgb.b = (uint8_t)(q * 255);
+        rgb.r = v_scaled;
+        rgb.g = p_scaled;
+        rgb.b = q_scaled;
         break;
     }
 

@@ -17,6 +17,7 @@
 #include "esp_log.h"
 #include "esp_random.h"
 #include "ble_manager.h"
+#include "led_service.h"
 
 extern "C" void app_main(void)
 {
