@@ -93,3 +93,17 @@ menu "MPU6050 Configuration"
             GPIO number for I2C Master data line.
      
 endmenu
+
+menu "LED Configuration"
+    config BLINK_GPIO
+        int "Blink GPIO number"
+        default 48
+        help
+            GPIO number (IOxx) to blink on and off the LED.
+            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
+    config BLINK_NUMBER
+        int "Blink number"
+        default 1
+        help
+            led number
+endmenu

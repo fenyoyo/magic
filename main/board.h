@@ -4,7 +4,7 @@
 #include <string>
 
 /** 按钮 GPIO：按下为低电平（接 GND），松开为高电平（内部上拉） */
-#define BUTTON_GPIO GPIO_NUM_10
+#define BUTTON_GPIO GPIO_NUM_12
 #define BUTTON_GPIO_R GPIO_NUM_11
 /** LED GPIO：按下按钮时亮，松开时灭 */
 #define LED_GPIO GPIO_NUM_5

@@ -103,7 +103,17 @@ void InferenceEngine::run_normalized_inference(float *collected_data, int collec
     }
     float *input_data = preprocess(collected_data, kNumTimeSteps);
 
-    // 现在使用归一化后的数据执行推理
+    // 输出所有预处理后的数据
+    ESP_LOGI(TAG, "预处理后的输入数据:");
+    for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++)
+    {
+        if (i % 10 == 0 && i != 0)
+        { // 每10个数据换一行，便于阅读
+            ESP_LOGI(TAG, "");
+        }
+        ESP_LOGI(TAG, "input_data[%d]=%.4f ", i, input_data[i]);
+    }
+    ESP_LOGI(TAG, ""); // 最后换行
     for (int i = 0; i < kNumTimeSteps * kNumFeaturesPerStep; i++)
     {
         input->data.f[i] = input_data[i];

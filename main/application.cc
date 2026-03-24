@@ -78,19 +78,19 @@ void Application::mqtt_trans(void *pvParameters)
             // ESP_LOGI(TAG, "pose=%d %d %d", pose.ax, pose.ay, pose.az);
             // ESP_LOGI(TAG, "quat x:%6.2f y:%6.2f z:%6.2f w:%6.2f\n", pose.qx, pose.qy, pose.qz, pose.qw);
 
-            // TODO 这里判断是否使学习模式，如果是才进行发送
-            //  int len;
-            //  len = snprintf(payload, sizeof(payload),
-            //                 "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d ,\"qx\":%6.2f,\"qy\":%6.2f,\"qz\":%6.2f,\"qw\":%f,\"roll\":%f,\"pitch\":%f,\"yaw\":%f,\"rax\":%d,\"ray\":%d,\"raz\":%d,\"wx\":%d,\"wy\":%d,\"wz\":%d}",
-            //                 (unsigned)pose.seq,
-            //                 pose.ax,
-            //                 pose.ay,
-            //                 pose.az,
-            //                 pose.gx,
-            //                 pose.gy,
-            //                 pose.gz, pose.qx, pose.qy, pose.qz, pose.qw, pose.roll, pose.pitch, pose.yaw, pose.rax, pose.ray, pose.raz, pose.wx, pose.wy, pose.wz);
-
-            // mqtt.publish(CONFIG_MQTT_SUBSCRIBE_TOPIC_GYRO, payload, (size_t)len, 0, 0);
+            int len;
+            len = snprintf(payload, sizeof(payload),
+                           "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d ,\"qx\":%6.2f,\"qy\":%6.2f,\"qz\":%6.2f,\"qw\":%f,\"roll\":%f,\"pitch\":%f,\"yaw\":%f,\"rax\":%d,\"ray\":%d,\"raz\":%d,\"wx\":%d,\"wy\":%d,\"wz\":%d}",
+                           (unsigned)pose.seq,
+                           pose.ax,
+                           pose.ay,
+                           pose.az,
+                           pose.gx,
+                           pose.gy,
+                           pose.gz, pose.qx, pose.qy, pose.qz, pose.qw, pose.roll, pose.pitch, pose.yaw, pose.rax, pose.ray, pose.raz, pose.wx, pose.wy, pose.wz);
+            std::string topic = "/events/device/pose";
+            std::string full_topic = mac_address + topic;
+            mqtt.publish(full_topic, payload, (size_t)len, 0, 0);
         }
     }
     vTaskDelete(NULL);
@@ -174,18 +174,20 @@ void Application::mpu6050(void *pvParameters)
     // TickType_t last_wake_time = xTaskGetTickCount();
     auto &mqtt = MQTTManager::getInstance();
     uint32_t seq = 0;
-
+    // 获取单例实例一次
+    Application &app = Application::getInstance();
     while (1)
     {
         if (gpio_get_level(BUTTON_GPIO) == 0)
         {
-            // 获取单例实例一次
-            Application &app = Application::getInstance();
 
             seq = 0;
             gpio_set_level(LED_GPIO, 1);
             ESP_LOGI(TAG, "Button pressed, start collecting MPU6050 data for inference");
-            mqtt.publish("/device/start", "", 0, 0, 0);
+
+            std::string topic1 = "/events/device/start";
+            std::string start_topic = mac_address + topic1;
+            mqtt.publish(start_topic, "", 0, 0, 0);
 
             // 开始收集数据 - 使用互斥锁保护共享数据
             {
@@ -286,7 +288,9 @@ void Application::mpu6050(void *pvParameters)
             }
 
             gpio_set_level(LED_GPIO, 0);
-            mqtt.publish("/device/stop", "", 0, 0, 0);
+            std::string topic2 = "/events/device/stop";
+            std::string stop_topic = mac_address + topic2;
+            mqtt.publish(stop_topic, "", 0, 0, 0);
             ESP_LOGI(TAG, "Button released, collected %u samples", (unsigned)seq);
 
             // 按钮释放后，如果收集到了足够的数据，则执行推理
@@ -397,6 +401,7 @@ void Application::Start()
     // 尝试wifi连接
     board.StartNetwork();
     board.SetButton();
+    ESP_LOGI(TAG, "Device ID2: %s", board.getDeviceId().c_str());
 
     xQueueTrans = xQueueCreate(10, sizeof(POSE_a_g));
 
@@ -415,7 +420,7 @@ void Application::Start()
     auto &ledService = getLedService();
 
     LedConfig ledConfig = {
-        .gpio = 48,                // 根据你的硬件连接修改GPIO
+        .gpio = CONFIG_BLINK_GPIO, // 根据你的硬件连接修改GPIO
         .num_leds = 1,             // LED数量
         .model = LED_MODEL_WS2812, // LED型号
         .invert_output = false     // 不反转输出
@@ -534,26 +539,18 @@ void Application::Start()
                 ESP_LOGI(TAG, "MQTT任务启动失败");
                 mqtt_task_handle = NULL; // 确保句柄为NULL
             }
-            if (imu_result != pdPASS)
-            {
-                ESP_LOGI(TAG, "IMU任务启动失败");
-                imu_task_handle = NULL; // 确保句柄为NULL
-            }
-            if (imu_result == pdPASS)
-            {
-                ESP_LOGI(TAG, "魔杖已经连接到MQTT服务器，IMU任务已启动");
+            // if (imu_result != pdPASS)
+            // {
+            //     ESP_LOGI(TAG, "IMU任务启动失败");
+            //     imu_task_handle = NULL; // 确保句柄为NULL
+            // }
+            // if (imu_result == pdPASS)
+            // {
+            //     ESP_LOGI(TAG, "魔杖已经连接到MQTT服务器，IMU任务已启动");
 
-                // MPU6050 初始化成功后，启动 LED 服务任务
-                esp_err_t led_task_ret = getLedService().startTask();
-                // if (led_task_ret != ESP_OK)
-                // {
-                //     ESP_LOGE(TAG, "Failed to start LED service task: %s", esp_err_to_name(led_task_ret));
-                // }
-                // else
-                // {
-                //     ESP_LOGI(TAG, "LED service task started after MPU6050 initialization");
-                // }
-            }
+            //     // MPU6050 初始化成功后，启动 LED 服务任务
+            //     // esp_err_t led_task_ret = getLedService().startTask();
+            // }
 
             size_t internal_ram_total = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
             ESP_LOGI(TAG, "内部 SRAM 剩余: %zu KB (%zu 字节)",
