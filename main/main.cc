@@ -30,7 +30,7 @@ extern "C" void app_main(void)
         return;
     }
 
-    // ESP_LOGI("MAIN", "Starting application...");
+    ESP_LOGI("MAIN", "Starting application...");
 
     // 启动程序
     Application::getInstance().Start();

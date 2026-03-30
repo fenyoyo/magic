@@ -28,7 +28,7 @@
 // #include "ssd1306.h"
 #include "time_series_normalizer.h"
 #include "public.h"
-#include "led_service.h"
+// #include "led_service.h"
 #define TAG "Application"
 
 #define GYRO_STREAM_MS 20
@@ -80,7 +80,7 @@ void Application::mqtt_trans(void *pvParameters)
 
             int len;
             len = snprintf(payload, sizeof(payload),
-                           "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d ,\"qx\":%6.2f,\"qy\":%6.2f,\"qz\":%6.2f,\"qw\":%f,\"roll\":%f,\"pitch\":%f,\"yaw\":%f,\"rax\":%d,\"ray\":%d,\"raz\":%d,\"wx\":%d,\"wy\":%d,\"wz\":%d}",
+                           "{\"seq\":%u,\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d ,\"qx\":%6.2f,\"qy\":%6.2f,\"qz\":%6.2f,\"qw\":%f,\"roll\":%f,\"pitch\":%f,\"yaw\":%f,\"aaRealx\":%d,\"aaRealy\":%d,\"aaRealz\":%d,\"aaWorldx\":%d,\"aaWorldy\":%d,\"aaWorldz\":%d}",
                            (unsigned)pose.seq,
                            pose.ax,
                            pose.ay,
@@ -203,13 +203,11 @@ void Application::mpu6050(void *pvParameters)
                     int16_t ax, ay, az, gx, gy, gz;
                     mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-                    // 获取四元数和欧拉角数据
-                    mpu.dmpGetQuaternion(&q, fifoBuffer);
-                    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-
                     // 获取线性加速度数据
+                    mpu.dmpGetQuaternion(&q, fifoBuffer);
                     mpu.dmpGetAccel(&aa, fifoBuffer);
                     mpu.dmpGetGravity(&gravity, &q);
+                    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
                     mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
                     mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
 
@@ -237,7 +235,7 @@ void Application::mpu6050(void *pvParameters)
                     pose.wy = aaWorld.y;
                     pose.wz = aaWorld.z;
 
-                    if (xQueueSend(xQueueTrans, &pose, 100) != pdPASS)
+                    if (xQueueSend(xQueueTrans, &pose, 200) != pdPASS)
                     {
                         ESP_LOGE(TAG, "xQueueSend fail");
                     }
@@ -417,23 +415,23 @@ void Application::Start()
     }
 
     // 初始化 LED 服务 - 仅初始化设备但不启动任务
-    auto &ledService = getLedService();
+    // auto &ledService = getLedService();
 
-    LedConfig ledConfig = {
-        .gpio = CONFIG_BLINK_GPIO, // 根据你的硬件连接修改GPIO
-        .num_leds = 1,             // LED数量
-        .model = LED_MODEL_WS2812, // LED型号
-        .invert_output = false     // 不反转输出
-    };
-    esp_err_t led_init_ret = ledService.init(ledConfig);
-    if (led_init_ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to initialize LED service: %s", esp_err_to_name(led_init_ret));
-    }
-    else
-    {
-        ESP_LOGI(TAG, "LED service device initialized, task will start after MPU6050");
-    }
+    // LedConfig ledConfig = {
+    //     .gpio = CONFIG_BLINK_GPIO, // 根据你的硬件连接修改GPIO
+    //     .num_leds = 1,             // LED数量
+    //     .model = LED_MODEL_WS2812, // LED型号
+    //     .invert_output = false     // 不反转输出
+    // };
+    // esp_err_t led_init_ret = ledService.init(ledConfig);
+    // if (led_init_ret != ESP_OK)
+    // {
+    //     ESP_LOGE(TAG, "Failed to initialize LED service: %s", esp_err_to_name(led_init_ret));
+    // }
+    // else
+    // {
+    //     ESP_LOGI(TAG, "LED service device initialized, task will start after MPU6050");
+    // }
 
     // auto &ledService = LedService::getInstance();
 
